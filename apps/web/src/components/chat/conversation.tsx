@@ -208,9 +208,9 @@ export function Conversation({
             name={assistant.name}
             description={assistant.description}
           />
-          <h1 className="opshelper-empty-title">今天需要处理什么问题？</h1>
+          <h1 className="opshelper-empty-title">有什么可以帮你？</h1>
           <p className="opshelper-empty-hint">
-            {assistant.description || `向${assistant.name}发送一条消息开始对话`}
+            直接说说你想做什么，也可以选择一个示例，补充内容后发送。
           </p>
           <div className="opshelper-empty-cards">
             {starterExamplesFor(assistant).map((example) => (

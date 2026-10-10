@@ -92,12 +92,12 @@ test("新增图标分类不改变首屏任务示例，管理员配置的示例�
   const custom = assistant({ id: "custom", name: "安全管理员" });
   assert.equal(agentIconKind(custom), "security");
   assert.equal(agentRole(custom), "generic");
-  assert.equal(starterExamplesFor(custom)[0].text, "介绍一下你能做什么");
+  assert.equal(starterExamplesFor(custom)[0].title, "帮我整理资料");
 
   const network = assistant({ id: "custom", name: "故障分析", description: "网络连通性排障" });
   assert.equal(agentIconKind(network), "diagnostics");
   assert.equal(agentRole(network), "network");
-  assert.equal(starterExamplesFor(network)[0].title, "排查网络访问");
+  assert.deepEqual(starterExamplesFor(network), starterExamplesFor(custom));
   const prompt = "整理班组工作记录";
   assert.deepEqual(starterExamplesFor({ ...custom, prompts: [prompt] }), [{ title: prompt, text: prompt }]);
 });
@@ -141,7 +141,7 @@ test("英文单词内部的子串不会把自定义智能体引导到运维或�
     assert.equal(agentRole(custom), role, input.id);
     assert.deepEqual(
       starterExamplesFor(custom).map((example) => example.title),
-      ["它能做什么", "能处理哪些任务", "看一个使用示例"],
+      ["帮我整理资料", "帮我润色文字", "帮我制定计划"],
       input.id,
     );
   }
@@ -165,14 +165,16 @@ test("英文职责关键词支持大小写、独立单词和智能体标识分�
   }
 });
 
-test("首屏示例按角色给出具体任务，并且都只是填入输入框的文字", () => {
+test("默认首屏示例适用于不同角色，不根据名称限制任务范围", () => {
   const examples = starterExamplesFor(
     assistant({ id: "network-ops", name: "网络运维", description: "网络连通性排障" }),
   );
 
   assert.ok(examples.length > 0 && examples.length <= 3);
-  assert.equal(examples[0].title, "排查网络访问");
-  assert.match(examples[0].text, /排查/);
+  assert.equal(examples[0].title, "帮我整理资料");
+  for (const id of ["system-ops", "shared-acceptance", "personal-123", "custom"]) {
+    assert.deepEqual(starterExamplesFor(assistant({ id })), examples, id);
+  }
   for (const example of examples) {
     assert.ok(example.title.length > 0);
     assert.ok(example.text.length > 0);
@@ -188,11 +190,12 @@ test("管理员配置的示例优先，且入口标题就是这句正文", () =>
   assert.deepEqual(examples, [{ title: prompt, text: prompt }]);
 });
 
-test("职责未知的智能体保留能力询问入口", () => {
+test("职责未知的智能体提供可补充内容的通用任务示例", () => {
   const examples = starterExamplesFor(assistant({ id: "custom-1", name: "小助手" }));
 
   assert.equal(examples.length, 3);
-  assert.equal(examples[0].text, "介绍一下你能做什么");
+  assert.equal(examples[0].title, "帮我整理资料");
+  assert.ok(examples.every((example) => example.text.endsWith("：\n\n")));
 });
 
 test("示例最多三条，且每条都是可以继续编辑的正文", () => {
@@ -201,6 +204,6 @@ test("示例最多三条，且每条都是可以继续编辑的正文", () => {
   );
 
   assert.equal(examples.length, 3);
-  assert.equal(examples[0].title, "分析错误日志");
+  assert.equal(examples[0].title, "帮我整理资料");
   assert.ok(examples.every((example) => example.text.length > 0));
 });

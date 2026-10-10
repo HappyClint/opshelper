@@ -1216,8 +1216,13 @@ button.opshelper-attachment-row { cursor: pointer; }
 .opshelper-auto-approve:has(input:disabled) { cursor: not-allowed; opacity: .55; }
 
 /* ---- 模型管理（/admin/agents 的「模型连接」tab） ---- */
+.opshelper-model-manager { height: auto; min-width: 0; }
+.opshelper-model-manager .opshelper-skill-field { flex: none; min-width: 0; }
+.opshelper-model-manager .opshelper-skill-field input:not([type="radio"]) { width: 100%; min-width: 0; box-sizing: border-box; }
+.opshelper-model-manager .opshelper-skill-editor-actions { padding-top: 12px; border-top: 1px solid var(--g-line); }
 .opshelper-model-key-row { display: flex; gap: 8px; align-items: center; }
 .opshelper-model-key-row input { flex: 1; }
+.opshelper-model-key-row button { flex: 0 0 auto; }
 .opshelper-model-rows { display: flex; flex-direction: column; gap: 6px; }
 .opshelper-model-row { display: flex; gap: 8px; align-items: center; }
 .opshelper-model-row-head { font-size: 12px; color: var(--g-muted); }
@@ -1225,6 +1230,21 @@ button.opshelper-attachment-row { cursor: pointer; }
 .opshelper-model-col-id { flex: 1 1 0; min-width: 0; }
 .opshelper-model-col-name { flex: 1 1 0; min-width: 0; }
 .opshelper-model-col-actions { flex: 0 0 auto; }
+.opshelper-model-mobile-label { display: none; }
+
+@media (max-width: 640px) {
+  .opshelper-model-manager { padding: 0; }
+  .opshelper-model-rows { gap: 12px; }
+  .opshelper-model-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px;
+    padding: 12px; border: 1px solid var(--g-line); border-radius: 10px;
+  }
+  .opshelper-model-row-head { display: none; }
+  .opshelper-model-col-default { display: flex; gap: 6px; grid-column: 1; grid-row: 1; }
+  .opshelper-model-col-id, .opshelper-model-col-name { display: grid; gap: 4px; grid-column: 1 / -1; }
+  .opshelper-model-col-actions { grid-column: 2; grid-row: 1; }
+  .opshelper-model-mobile-label { display: inline; }
+}
 
 /* ---- 共享工作区导航（工作台侧栏专用部分） ---- */
 /* 智能体选择器：一个下拉控件，所以保留描边（与只靠底色的导航行区分开）。
@@ -1793,11 +1813,11 @@ button.opshelper-attachment-row { cursor: pointer; }
 /* 收起的抽屉只是位移到视口外，用 visibility 让它彻底退出焦点与无障碍树；
    打开时立即可见，关闭时等滑出动画结束再隐藏。 */
 @media (max-width: 640px) {
-  .opshelper-console-shell .opshelper-sidebar {
+  .opshelper-sidebar {
     visibility: hidden;
     transition: transform .18s ease, visibility 0s linear .18s;
   }
-  .opshelper-console-shell.opshelper-sidebar-open .opshelper-sidebar {
+  .opshelper-sidebar-open .opshelper-sidebar {
     visibility: visible;
     transition: transform .18s ease;
   }

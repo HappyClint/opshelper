@@ -84,7 +84,7 @@ export function GlobalInstructionsManager() {
   return (
     <div className="global-instructions-manager">
       <div className="opshelper-skill-files-hint">
-        这里的内容会作为 OpenCode 全局 <span className="mono">AGENTS.md</span> 应用于所有用户和全部智能体。
+        这里的规则会应用于所有用户和智能体。
         保存后，正在执行任务的用户会先完成当前任务，随后系统逐个重建运行环境。
       </div>
       <label className="field global-instructions-field">

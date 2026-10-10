@@ -40,7 +40,7 @@ export function agentRole(agent: Pick<Assistant, "id" | "name" | "description">)
   return "generic";
 }
 
-// 图标分类只影响外观，首屏任务示例继续使用原有角色规则。
+// 图标分类只影响外观，不限制首屏示例的用途。
 export type AgentIconKind = AgentRole | "diagnostics" | "database" | "security";
 
 const ICON_MATCHERS: ReadonlyArray<readonly [AgentIconKind, RegExp]> = [
@@ -64,46 +64,25 @@ export function agentIconKind(agent: Pick<Assistant, "id" | "name" | "descriptio
 // 首屏示例分两段：入口标题（按钮上显示的短句）与点击后填入输入框的文字。
 export type StarterExample = { title: string; text: string };
 
-// 职责未知时的通用入口：让智能体自己说明能力，比替它承诺一个未经确认的运维任务安全。
+// 默认示例展示通用用法；具体领域示例由管理员显式配置，不从名称推测能力。
 const UNIVERSAL_PROMPTS: StarterExample[] = [
-  { title: "它能做什么", text: "介绍一下你能做什么" },
-  { title: "能处理哪些任务", text: "你能帮我处理哪些任务？" },
-  { title: "看一个使用示例", text: "给我一个使用示例" },
+  { title: "帮我整理资料", text: "请帮我整理以下资料，提炼关键要点，并列出需要进一步确认的信息：\n\n" },
+  { title: "帮我润色文字", text: "请帮我润色以下文字，保留原意，让表达更清楚、自然：\n\n" },
+  { title: "帮我制定计划", text: "请帮我把以下目标拆成可执行的步骤，并说明每一步需要准备什么：\n\n" },
 ];
-
-const ROLE_EXAMPLES: Record<Exclude<AgentRole, "person" | "generic">, StarterExample[]> = {
-  network: [
-    { title: "排查网络访问", text: "帮我排查目标服务访问失败，需要哪些信息？" },
-    { title: "检查 DNS 解析", text: "域名解析异常，帮我按步骤确认本地 DNS 和解析结果。" },
-    { title: "确认端口连通", text: "帮我确认目标端口是否可达，以及应该用哪些命令验证。" },
-  ],
-  system: [
-    { title: "分析错误日志", text: "帮我分析这段日志，找出异常原因和下一步排查建议。" },
-    { title: "排查服务异常", text: "服务没有正常启动，帮我按顺序核对资源占用和进程状态。" },
-    { title: "整理巡检项", text: "帮我整理这台主机需要定期检查的项目和对应命令。" },
-  ],
-  team: [
-    { title: "核对角色定义", text: "帮我检查这个智能体的角色定义和文件是否一致。" },
-    { title: "检查配置差异", text: "帮我对比两套配置的差异，并说明可能的影响。" },
-    { title: "确认共享边界", text: "帮我确认跨用户共享时的隔离边界和验收要点。" },
-  ],
-};
 
 const MAX_STARTERS = 3;
 
 /**
- * 首屏任务示例：管理员显式配置的示例优先；否则按角色给出具体任务；
- * 角色未知时退回能力询问入口。最多三条，点击后只填入输入框，不自动执行。
+ * 首屏任务示例：管理员显式配置的示例优先，否则使用通用示例。
+ * 最多三条，点击后只填入输入框，不自动执行。
  */
 export function starterExamplesFor(assistant: Assistant): StarterExample[] {
   if (assistant.prompts && assistant.prompts.length > 0) {
     // 管理员给的示例只有正文，入口标题沿用同一句，不再另拟文案。
     return assistant.prompts.slice(0, MAX_STARTERS).map((text) => ({ title: text, text }));
   }
-  const role = agentRole(assistant);
-  // 角色明确时给具体任务；职责未知时不替它承诺运维动作，改成让它自己说明能力。
-  const examples = role === "person" || role === "generic" ? UNIVERSAL_PROMPTS : ROLE_EXAMPLES[role];
-  return examples.slice(0, MAX_STARTERS);
+  return UNIVERSAL_PROMPTS.slice(0, MAX_STARTERS);
 }
 
 // Admin-provided starter prompts can arrive in two shapes:
