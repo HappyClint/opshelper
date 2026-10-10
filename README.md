@@ -162,6 +162,7 @@ npm run build:web
 
 ## 使用文档
 
+- [贡献指南](CONTRIBUTING.md)
 - [管理员手册](docs/guide/admin.md)
 - [用户手册](docs/guide/user.md)
 - [源码部署](docs/guide/deployment.md)
