@@ -639,7 +639,7 @@ export function AgentManagementPanel({
             <div className="agent-catalog-heading">
               <div>
                 <h2>智能体目录</h2>
-                <p>管理团队共用的运维能力</p>
+                <p>管理团队共用的智能体</p>
               </div>
               <span>{agentCatalogCount(agents.length, filteredAgents.length, searching)}</span>
             </div>

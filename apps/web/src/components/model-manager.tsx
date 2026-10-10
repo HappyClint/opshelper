@@ -163,7 +163,7 @@ export function ModelManager({ onDirty }: { onDirty: () => void }) {
   }
 
   return (
-    <div className="opshelper-skill-editor">
+    <div className="opshelper-skill-editor opshelper-model-manager">
       <div className="opshelper-skill-files-hint">
         所有模型共用同一个 OpenAI 兼容接口地址与 API
         Key，仅模型 ID 不同。保存后，正在执行任务的用户会先等待本次任务结束，
@@ -213,30 +213,37 @@ export function ModelManager({ onDirty }: { onDirty: () => void }) {
               <span className="opshelper-model-col-name">显示名（用户在聊天界面看到的）</span>
               <span className="opshelper-model-col-actions" />
             </div>
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <div key={row.key} className="opshelper-model-row">
-                <span className="opshelper-model-col-default">
+                <label className="opshelper-model-col-default">
                   <input
                     type="radio"
                     name="opshelper-default-model"
                     checked={defaultKey === row.key}
                     onChange={() => setDefaultKey(row.key)}
-                    aria-label="设为默认模型"
+                    aria-label={`设为默认模型（第 ${index + 1} 行）`}
                   />
-                </span>
-                <input
-                  className="opshelper-model-col-id"
-                  value={row.id}
-                  placeholder="例如 qwen-plus"
-                  spellCheck={false}
-                  onChange={(e) => updateRow(row.key, { id: e.target.value })}
-                />
-                <input
-                  className="opshelper-model-col-name"
-                  value={row.name}
-                  placeholder="例如 通义千问 Plus（留空用模型 ID）"
-                  onChange={(e) => updateRow(row.key, { name: e.target.value })}
-                />
+                  <span className="opshelper-model-mobile-label">默认模型</span>
+                </label>
+                <label className="opshelper-model-col-id">
+                  <span className="opshelper-model-mobile-label">模型 ID</span>
+                  <input
+                    aria-label={`模型 ID（第 ${index + 1} 行）`}
+                    value={row.id}
+                    placeholder="例如 qwen-plus"
+                    spellCheck={false}
+                    onChange={(e) => updateRow(row.key, { id: e.target.value })}
+                  />
+                </label>
+                <label className="opshelper-model-col-name">
+                  <span className="opshelper-model-mobile-label">显示名</span>
+                  <input
+                    aria-label={`显示名（第 ${index + 1} 行）`}
+                    value={row.name}
+                    placeholder="留空使用模型 ID"
+                    onChange={(e) => updateRow(row.key, { name: e.target.value })}
+                  />
+                </label>
                 <span className="opshelper-model-col-actions">
                   <button
                     className="opshelper-skill-btn small danger"

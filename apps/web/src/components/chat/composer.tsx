@@ -250,7 +250,7 @@ export function Composer({
 
         <textarea
           ref={textareaRef}
-          placeholder="描述问题，可附上日志或截图"
+          placeholder="输入你的需求，或添加文件"
           aria-label="消息内容"
           aria-describedby={keyboardHintId}
           value={value}
