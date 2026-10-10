@@ -1,0 +1,4 @@
+interface:
+  display_name: "opshelper 离线部署与升级"
+  short_description: "制作 x86 全新安装包或仅含实际变更的最小连续升级包"
+  default_prompt: "使用 $opshelper-offline-deploy，检查本项目上次 release，为当前版本制作最小 x86 离线升级包：默认只含改动镜像、升级说明和校验文件，非镜像资产仅在确有变化时加入，并给出连续升级与回退方案。"

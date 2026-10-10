@@ -1,0 +1,4 @@
+interface:
+  display_name: "opshelper 技能适配器"
+  short_description: "将普通 Skill ZIP 改造成可直接导入 opshelper 的兼容包"
+  default_prompt: "将 /workspace 中指定的技能 ZIP 适配为 opshelper 兼容技能，并输出可直接导入的 ZIP。"

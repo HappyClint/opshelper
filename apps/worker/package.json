@@ -1,0 +1,19 @@
+{
+  "name": "@opshelper/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opshelper/shared": "file:../../packages/shared",
+    "@prisma/client": "^6.19.0",
+    "dockerode": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.41"
+  },
+  "license": "MIT"
+}

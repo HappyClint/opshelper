@@ -1,0 +1,64 @@
+# Dependencies and build output
+node_modules/
+.next/
+dist/
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Local configuration and credentials; only example templates are tracked
+.env
+.env.*
+!.env.example
+!**/.env.example
+.aws/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Deployment state, backups and locally built release packages
+/data/
+/production/
+/releases/
+/backups/
+*.tar
+*.tar.gz
+*.crx
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+# Checked-in database fixtures remain available for tests
+!**/fixtures/*.db
+!**/fixtures/*.sqlite
+!**/fixtures/*.sqlite3
+
+# Test reports, logs and temporary files
+coverage/
+playwright-report/
+test-results/
+.pytest_cache/
+*.log
+/.temp/
+/.playwright-mcp/
+__pycache__/
+*.py[cod]
+.venv/
+
+# Machine-specific editor and agent state
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.claude/
+.codex/
+.opencode/node_modules/
+.opencode/package.json
+.opencode/bun.lock
+.opencode/bun.lockb

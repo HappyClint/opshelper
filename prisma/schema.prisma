@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ContainerStatus {
+  CREATING
+  RUNNING
+  STOPPED
+  DELETING
+  ERROR
+}
+
+enum AgentCheckStatus {
+  PENDING
+  READY
+  ERROR
+}
+
+enum ConfigApplyStatus {
+  DRAINING
+  REVOKING
+  APPLYING
+  READY
+  FROZEN
+}
+
+enum ExecutionStatus {
+  QUEUED
+  DISPATCHING
+  RUNNING
+  WAITING_INPUT
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  INTERRUPTED
+}
+
+enum ExecutionSource {
+  CHAT
+  SCHEDULED
+  SCHEDULE_MANUAL
+}
+
+enum ScheduleFrequency {
+  ONCE
+  DAILY
+  WEEKLY
+  CRON
+}
+
+enum ScheduleStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum ScheduleRunTrigger {
+  SCHEDULED
+  MANUAL
+}
+
+enum ScheduleRunDecision {
+  ENQUEUED
+  SKIPPED
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  username           String              @unique @map("email")
+  name               String
+  passwordHash       String
+  role               UserRole            @default(USER)
+  isActive           Boolean             @default(true)
+  keepContainerAlive Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  sessions           Session[]
+  container          ContainerInstance?
+  activities         ContainerActivity[]
+  agents             UserAgent[]
+  conversations      Conversation[]
+  schedules          Schedule[]
+}
+
+model Agent {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  displayName String
+  description String
+  mode        String           @default("all")
+  isEnabled   Boolean          @default(true)
+  contentHash String?
+  checkStatus AgentCheckStatus @default(PENDING)
+  checkError  String?
+  checkedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       UserAgent[]
+}
+
+model UserAgent {
+  userId    String
+  agentId   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Restrict)
+
+  @@id([userId, agentId])
+  @@index([agentId, userId])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  userId     String
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model ContainerInstance {
+  id                 String              @id @default(cuid())
+  userId             String              @unique
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name               String              @unique
+  image              String
+  status             ContainerStatus
+  dockerContainerId  String?
+  proxySlug          String              @unique
+  lastActivityAt     DateTime?
+  lastWakeAttemptAt  DateTime?
+  lifecycleLockedAt  DateTime?
+  lifecycleLockOwner String?
+  lastStartedAt      DateTime?
+  lastStoppedAt      DateTime?
+  deletedAt          DateTime?
+  lastError          String?
+  desiredGeneration  Int                 @default(0)
+  appliedGeneration  Int                 @default(0)
+  desiredRuntimeHash String?
+  appliedRuntimeHash String?
+  configApplyStatus  ConfigApplyStatus   @default(FROZEN)
+  configApplyAttemptId String?
+  configApplyError   String?
+  drainingRuntimeState Json?
+  configAppliedAt    DateTime?
+  activeExecutionId  String?             @unique
+  executionLeaseOwner String?
+  executionLeaseExpiresAt DateTime?
+  executionRecoveryRequired Boolean      @default(false)
+  executionRecoveryReason String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  activities         ContainerActivity[]
+}
+
+model Conversation {
+  id                     String      @id @default(cuid())
+  userId                 String
+  user                   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nativeSessionId        String?     @unique
+  sessionCreateAttemptId String?
+  title                  String
+  lastAgentKey           String
+  lastConfigGeneration   Int?
+  recoveryRequired       Boolean     @default(false)
+  recoveryReason         String?
+  archivedAt             DateTime?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  executions             Execution[]
+
+  @@unique([userId, id])
+  @@index([userId, archivedAt, updatedAt])
+}
+
+model Execution {
+  id                    String           @id @default(cuid())
+  userId                String
+  conversationId        String
+  conversation          Conversation     @relation(fields: [userId, conversationId], references: [userId, id], onDelete: Cascade)
+  scheduleRunId         String?           @unique
+  scheduleRun           ScheduleRun?      @relation(fields: [scheduleRunId], references: [id], onDelete: SetNull)
+  source                ExecutionSource  @default(CHAT)
+  attachmentDigests     Json?
+  outputFiles           Json?
+  status                ExecutionStatus  @default(QUEUED)
+  queueSequence         BigInt           @unique @default(autoincrement())
+  requestKey            String
+  leadAgentKey          String
+  agentKeysSnapshot     Json
+  actualAgentKeys       Json?
+  configGeneration      Int
+  inputText             String
+  attachments           Json
+  model                  String?
+  autoApprovePermissions Boolean          @default(false)
+  dispatchAttemptId     String?
+  promptMarker          String           @unique
+  promptAcceptedAt      DateTime?
+  cancelRequestedAt     DateTime?
+  waitingSince          DateTime?
+  resultSummary         String?
+  error                 String?
+  queuedAt              DateTime          @default(now())
+  startedAt             DateTime?
+  finishedAt            DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([userId, status, queueSequence])
+  @@index([conversationId, createdAt])
+  @@unique([userId, requestKey])
+}
+
+model Schedule {
+  id                       String             @id @default(cuid())
+  userId                   String
+  user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                     String
+  prompt                   String
+  leadAgentKey             String
+  participantAgentKeys     Json
+  attachments              Json
+  model                    String?
+  autoApprovePermissions   Boolean             @default(false)
+  frequency                ScheduleFrequency
+  localTime                String
+  weekday                  Int?
+  onceAt                   DateTime?
+  cronExpression           String?
+  timeZone                 String             @default("Asia/Shanghai")
+  status                   ScheduleStatus     @default(ACTIVE)
+  statusReason             String?
+  nextRunAt                DateTime?
+  lastScheduledAt          DateTime?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  runs                     ScheduleRun[]
+
+  @@index([userId, status, nextRunAt])
+  @@index([status, nextRunAt])
+}
+
+model ScheduleRun {
+  id                       String               @id @default(cuid())
+  scheduleId               String
+  schedule                 Schedule             @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  userId                   String
+  scheduledFor             DateTime
+  trigger                  ScheduleRunTrigger
+  decision                 ScheduleRunDecision
+  skipReason               String?
+  missedThrough            DateTime?
+  missedCount              Int                  @default(0)
+  scheduleSnapshot         Json
+  execution                Execution?
+  createdAt                DateTime             @default(now())
+
+  @@unique([scheduleId, scheduledFor])
+  @@index([userId, createdAt])
+  @@index([scheduleId, createdAt])
+}
+
+model ContainerActivity {
+  id          String             @id @default(cuid())
+  userId      String
+  containerId String?
+  kind        String
+  detail      String?
+  occurredAt  DateTime           @default(now())
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  container   ContainerInstance? @relation(fields: [containerId], references: [id], onDelete: SetNull)
+
+  @@index([containerId, occurredAt])
+  @@index([userId, occurredAt])
+}
+
+model MountedAsset {
+  id          String   @id @default(cuid())
+  userId      String
+  displayName String
+  storagePath String
+  mountPath   String
+  kind        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

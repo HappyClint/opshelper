@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 48 48">
+  <defs><linearGradient id="c2-prompt-bubble-grad" x1="0" y1="0" x2="0" y2="1">
+           <stop offset="0" stop-color="#12a06b"/><stop offset="1" stop-color="#067a4e"/>
+         </linearGradient><mask id="c2-prompt-bubble-mask-green" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
+        <rect width="48" height="48" fill="#000"/><rect x="6" y="7" width="36" height="28" rx="9.5" ry="9.5" fill="#fff"/><path d="M13.5 31.5 L11 42.5 L21 34.5 Z" fill="#fff"/><path d="M16 15 L22.5 21 L16 27" fill="none" stroke="#000" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M27 27 H33" fill="none" stroke="#000" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </mask></defs>
+  <rect width="48" height="48" rx="11" ry="11" fill="url(#c2-prompt-bubble-grad)"/>
+      <g transform="translate(24 24) scale(0.68) translate(-24 -24.6)">
+        <rect width="48" height="48" fill="#ffffff" mask="url(#c2-prompt-bubble-mask-green)"/>
+      </g>
+</svg>

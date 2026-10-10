@@ -1,0 +1,15 @@
+{
+  "name": "@opshelper/shared",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "cron-parser": "^5.10.1"
+  },
+  "scripts": {
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
+  },
+  "license": "MIT"
+}

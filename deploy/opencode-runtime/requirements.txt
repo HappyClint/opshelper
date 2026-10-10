@@ -1,0 +1,34 @@
+# 技能（opencode skills）运行所需的 Python 依赖。
+#
+# 离线环境无法在容器内 `pip install`，故所有技能要用到的 Python 包都在构建
+# runtime 镜像时预装进来（见 Dockerfile）。新增技能依赖时：在此追加并钉死版本，
+# 然后重建镜像 + 重建各用户容器即可。
+#
+# 版本必须钉死（==），保证离线构建可复现。
+
+# Word(.docx) 生成/读取
+python-docx==1.2.0
+# Excel(.xlsx) 读写
+openpyxl==3.1.5
+# PowerPoint(.pptx) 生成
+python-pptx==1.0.2
+# PDF 读取
+pypdf==6.13.3
+# PDF 生成
+reportlab==5.0.0
+# PDF 文本/表格提取（pdf 技能 extract_form_structure.py）
+pdfplumber==0.11.10
+# 图像处理（pptx thumbnail / pdf 校验图脚本）
+Pillow==12.2.0
+# 安全 XML 解析（office unpack/pack/comment 等脚本）
+defusedxml==0.7.1
+# XML/HTML 解析（python-docx 已传递依赖，显式钉死避免版本漂移）
+lxml==6.1.1
+# YAML 读写
+PyYAML==6.0.3
+# 同步 HTTP 请求
+requests==2.34.2
+# 日期解析/时区
+python-dateutil==2.9.0.post0
+# 模板渲染（HTML/报告/邮件正文）
+Jinja2==3.1.6

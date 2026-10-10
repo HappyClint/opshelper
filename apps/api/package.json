@@ -1,0 +1,25 @@
+{
+  "name": "@opshelper/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^10.0.0",
+    "@opshelper/shared": "file:../../packages/shared",
+    "@prisma/client": "^6.19.0",
+    "dockerode": "^5.0.1",
+    "fastify": "^5.2.1",
+    "mime-types": "^3.0.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.41",
+    "@types/mime-types": "^3.0.1"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,35 @@
+{
+  "name": "opshelper",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "db:seed": "prisma db seed",
+    "db:migrate": "prisma migrate deploy",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build:web": "npm run build -w @opshelper/web",
+    "prisma:validate": "DATABASE_URL=${DATABASE_URL:-postgresql://opshelper:opshelper@127.0.0.1:5432/opshelper} prisma validate",
+    "test": "npm run test --workspaces --if-present && node --import tsx --test prisma/seed.test.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "prisma": "^6.6.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.29"
+    }
+  },
+  "license": "MIT"
+}

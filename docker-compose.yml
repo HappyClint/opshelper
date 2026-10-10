@@ -1,0 +1,215 @@
+services:
+  postgres-init:
+    image: ${OPSHELPER_POSTGRES_IMAGE:-postgres:16}
+    user: "0:0"
+    network_mode: none
+    entrypoint: ["sh", "-lc"]
+    command: ["chown 999:999 /var/lib/postgresql/data && chmod 700 /var/lib/postgresql/data"]
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT_HOST:?set DATA_ROOT_HOST to the absolute host data directory}/postgres
+        target: /var/lib/postgresql/data
+    restart: "no"
+
+  postgres:
+    image: ${OPSHELPER_POSTGRES_IMAGE:-postgres:16}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: opshelper
+      POSTGRES_USER: opshelper
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT_HOST:?set DATA_ROOT_HOST to the absolute host data directory}/postgres
+        target: /var/lib/postgresql/data
+    networks:
+      - control
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opshelper -d opshelper"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+
+  migrate:
+    image: ${OPSHELPER_API_IMAGE:-opshelper-api:local}
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgresql://opshelper:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/opshelper
+      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:1.18.34}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [control]
+
+  bootstrap:
+    image: ${OPSHELPER_API_IMAGE:-opshelper-api:local}
+    profiles: [bootstrap]
+    command: ["npm", "run", "db:seed"]
+    environment:
+      DATABASE_URL: postgresql://opshelper:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/opshelper
+      OPSHELPER_ADMIN_PASSWORD: ${OPSHELPER_ADMIN_PASSWORD:-}
+      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:1.18.34}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [control]
+
+  api:
+    image: ${OPSHELPER_API_IMAGE:-opshelper-api:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    restart: unless-stopped
+    user: "${OPSHELPER_UID:-1000}:${OPSHELPER_GID:-1000}"
+    group_add:
+      - "${OPSHELPER_DOCKER_GID:-989}"
+    environment:
+      HOME: /tmp
+      OPSHELPER_API_PORT: 4000
+      OPSHELPER_API_HOST: 0.0.0.0
+      DATABASE_URL: postgresql://opshelper:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/opshelper
+      DATA_ROOT: /data
+      # 即使传入 API，这仍是 Docker 创建每用户 bind 时使用的宿主路径；不能写 /data。
+      DATA_ROOT_HOST: ${DATA_ROOT_HOST:?set DATA_ROOT_HOST to the absolute host data directory}
+      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:1.18.34}
+      OPENCODE_DOCKER_PORT: 4096
+      OPENCODE_WORKING_DIR: /workspace
+      OPENCODE_RUNTIME_UID: ${OPSHELPER_UID:-1000}
+      OPENCODE_RUNTIME_GID: ${OPSHELPER_GID:-1000}
+      OPENCODE_RUNTIME_MEMORY_MB: ${OPENCODE_RUNTIME_MEMORY_MB:-2048}
+      OPENCODE_RUNTIME_CPUS: ${OPENCODE_RUNTIME_CPUS:-2}
+      OPSHELPER_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-opshelper}-runtime
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      OPSHELPER_SESSION_COOKIE_NAME: ${OPSHELPER_SESSION_COOKIE_NAME:-opshelper_session}
+      OPSHELPER_SESSION_TTL_HOURS: ${OPSHELPER_SESSION_TTL_HOURS:-168}
+      OPSHELPER_IDLE_TIMEOUT_MINUTES: ${OPSHELPER_IDLE_TIMEOUT_MINUTES:-60}
+      OPSHELPER_CHAT_UPLOAD_TTL_HOURS: ${OPSHELPER_CHAT_UPLOAD_TTL_HOURS:-168}
+      OPSHELPER_EXECUTION_POLL_MS: ${OPSHELPER_EXECUTION_POLL_MS:-1000}
+      OPSHELPER_EXECUTION_TIMEOUT_MINUTES: ${OPSHELPER_EXECUTION_TIMEOUT_MINUTES:-30}
+      OPSHELPER_INTERACTION_TIMEOUT_MINUTES: ${OPSHELPER_INTERACTION_TIMEOUT_MINUTES:-30}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: bind
+        source: ${DATA_ROOT_HOST:?set DATA_ROOT_HOST to the absolute host data directory}
+        target: /data
+    networks:
+      - control
+      - runtime
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    image: ${OPSHELPER_WORKER_IMAGE:-opshelper-worker:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    user: "${OPSHELPER_UID:-1000}:${OPSHELPER_GID:-1000}"
+    group_add:
+      - "${OPSHELPER_DOCKER_GID:-989}"
+    environment:
+      HOME: /tmp
+      DATABASE_URL: postgresql://opshelper:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/opshelper
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      OPSHELPER_IDLE_TIMEOUT_MINUTES: ${OPSHELPER_IDLE_TIMEOUT_MINUTES:-60}
+      OPSHELPER_SCHEDULE_POLL_MS: ${OPSHELPER_SCHEDULE_POLL_MS:-15000}
+      OPSHELPER_SCHEDULE_LATE_GRACE_MS: ${OPSHELPER_SCHEDULE_LATE_GRACE_MS:-120000}
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+    networks:
+      - control
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const fs=require('node:fs');const alive=fs.readdirSync('/proc').some((pid)=>{if(!/^[0-9]+$/.test(pid)||Number(pid)===process.pid)return false;try{const cmd=fs.readFileSync('/proc/'+pid+'/cmdline','utf8');return cmd.includes('tsx')&&cmd.includes('src/index.ts')}catch{return false}});process.exit(alive?0:1)"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  web:
+    image: ${OPSHELPER_WEB_IMAGE:-opshelper-web:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    restart: unless-stopped
+    environment:
+      OPSHELPER_API_INTERNAL_URL: http://api:4000
+      OPENCODE_WORKING_DIR: /workspace
+      OPSHELPER_SESSION_COOKIE_NAME: ${OPSHELPER_SESSION_COOKIE_NAME:-opshelper_session}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - control
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/gateway').then((r)=>process.exit(r.ok||r.status===308?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  nginx:
+    image: ${OPSHELPER_NGINX_IMAGE:-nginx:alpine}
+    restart: unless-stopped
+    ports:
+      - "${OPSHELPER_HTTP_HOST:-127.0.0.1}:${OPSHELPER_HTTP_PORT:-8080}:80"
+    volumes:
+      - type: bind
+        source: ./deploy/nginx/default.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    networks:
+      - control
+      - runtime
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+networks:
+  control:
+    name: ${COMPOSE_PROJECT_NAME:-opshelper}-control
+    internal: true
+  runtime:
+    name: ${COMPOSE_PROJECT_NAME:-opshelper}-runtime
+    attachable: true
