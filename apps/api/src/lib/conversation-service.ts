@@ -938,7 +938,10 @@ export async function enqueueExecution(input: {
   return execution;
 }
 
-function promptParts(execution: Execution, plannedCollaborators: string[] = []) {
+export function executionPromptPayload(
+  execution: Pick<Execution, "id" | "inputText" | "source" | "attachments" | "promptMarker">,
+  plannedCollaborators: string[] = [],
+) {
   const attachments = asAttachments(execution.attachments);
   const viewable = attachments.filter((file) =>
     file.mime.startsWith("image/") || file.mime.startsWith("text/") || file.mime === "application/pdf",
@@ -959,15 +962,12 @@ function promptParts(execution: Execution, plannedCollaborators: string[] = []) 
     text = `${text}${text ? "\n\n" : ""}本次定时任务计划由以下智能体协作：${plannedCollaborators.join("、")}。请按任务需要使用 task 工具委派，并以实际执行情况为准。`;
   }
   text = `${text}${text ? "\n\n" : ""}${executionPromptMarker(execution.promptMarker)}`;
-  return [
-    { type: "text", text },
-    ...viewable.map((file) => ({
-      type: "file",
-      mime: file.mime,
-      filename: file.filename,
-      url: `file://${file.path}`,
-    })),
-  ];
+  return {
+    id: `msg_opshelper_${execution.promptMarker.replaceAll("-", "")}`,
+    text,
+    files: viewable.map((file) => ({ uri: `file://${file.path}`, name: file.filename })),
+    delivery: "queue",
+  };
 }
 
 async function markInterrupted(execution: Execution, reason: string) {
@@ -1602,12 +1602,7 @@ async function dispatchExecution(execution: Execution) {
       connection,
       "POST",
       `/api/session/${readyConversation.nativeSessionId}/prompt`,
-      {
-        id: `msg_opshelper_${current.promptMarker.replaceAll("-", "")}`,
-        text: promptParts(current, plannedCollaborators).filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("\n"),
-        files: asAttachments(current.attachments).map((file) => ({ uri: `file://${file.path}`, name: file.filename })),
-        delivery: "queue",
-      },
+      executionPromptPayload(current, plannedCollaborators),
       120_000,
     );
     await prisma.execution.updateMany({
