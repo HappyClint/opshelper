@@ -138,7 +138,7 @@ export async function prepareManagedRuntime(
   }
   const user = getUserPaths(userId, config);
   const digest = createHash("sha256").update(JSON.stringify({
-    version: 11,
+    version: 12,
     desiredGeneration: definition.desiredGeneration,
     agents: definition.agents.map((agent) => ({
       key: agent.key,
@@ -250,6 +250,10 @@ export async function prepareManagedRuntime(
         ownMcpPatterns.push(pattern);
       }
       const tools = Object.fromEntries([
+        // Code Mode wrappers can return without invoking anything, while
+        // models report success. Prefer observable tools; explicit opt-in
+        // remains available for agents designed to use the execute API.
+        ["execute", false] as const,
         ...definitionAgent.tools.map((tool) => [tool, true] as const),
         ...(ownSkills.length ? [["skill", true] as const] : []),
         ...ownMcpPatterns.map((pattern) => [pattern, true] as const),

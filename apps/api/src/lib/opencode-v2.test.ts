@@ -42,6 +42,24 @@ test("V2 form replies use field keys and option values, with typed numbers and b
   assert.throws(() => v2FormAnswer(form, [["继续"], ["bad"], ["否"]]), /数字/);
 });
 
+test("reasoning and tools do not change text identities between V2 snapshots and SSE", () => {
+  const messages = normalizeV2Messages([{ id: "a", type: "assistant", time: { created: 1, completed: 2 }, content: [
+    { type: "reasoning", text: "private" }, { type: "text", text: "first" },
+    { id: "tool", type: "tool", name: "read", state: { status: "error", error: { message: "File not found" } } },
+    { type: "text", text: "second" },
+  ] }], "s");
+  const projector = new ConversationTextProjector("s", [], 0);
+  const seeded = projector.seed(messages);
+  assert.deepEqual(seeded.map((part) => part.partId), ["a:text:0", "a:text:1"]);
+  for (const [ordinal, text] of ["first", "second"].entries()) {
+    assert.deepEqual(projector.apply(normalizeV2Event({ type: "session.text.ended", created: 2,
+      data: { sessionID: "s", assistantMessageID: "a", ordinal, text } })), []);
+  }
+  const tool = messages[0].parts.find((part: any) => part.type === "tool");
+  assert.equal(tool.state.output, undefined);
+  assert.equal(tool.state.error, "File not found");
+});
+
 test("V2 pagination follows cursors until empty without duplicating records", async () => {
   const original = globalThis.fetch;
   const routes: string[] = [];

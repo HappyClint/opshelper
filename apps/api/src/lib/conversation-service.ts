@@ -943,14 +943,15 @@ function promptParts(execution: Execution, plannedCollaborators: string[] = []) 
   const viewable = attachments.filter((file) =>
     file.mime.startsWith("image/") || file.mime.startsWith("text/") || file.mime === "application/pdf",
   );
-  const referenced = attachments.filter((file) => !viewable.includes(file));
   let text = resolveExecutionPromptText(execution.inputText, execution.source, execution.id);
   const interactionGuidance = executionInteractionGuidance(execution.source);
   if (interactionGuidance) {
     text = `${text}${text ? "\n\n" : ""}${interactionGuidance}`;
   }
-  if (referenced.length) {
-    const lines = referenced.map((file) => `- ${file.filename}（${file.path}）`).join("\n");
+  if (attachments.length) {
+    // Include the actual path even when V2 also embeds a viewable attachment.
+    // Providers can otherwise ask the read tool for /workspace/<filename>.
+    const lines = attachments.map((file) => `- ${file.filename}（${file.path}）`).join("\n");
     const note = `我上传了以下文件，请读取并处理：\n${lines}`;
     text = text ? `${text}\n\n${note}` : note;
   }

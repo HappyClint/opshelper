@@ -46,7 +46,7 @@ test("装配只包含获配智能体，同一内容复用代次，重建保留�
           mode: key === "network" ? "primary" : "subagent",
           contentHash: contentHashes[key],
           model: null,
-          tools: [],
+          tools: key === "system" ? ["execute"] : [],
           skills: key === "network" ? ["diagnose"] : [],
           scripts: [],
           mcp: key === "network" ? {
@@ -91,6 +91,8 @@ test("装配只包含获配智能体，同一内容复用代次，重建保留�
     assert.equal(parsed.default_agent, "network");
     assert.equal(parsed.agent.network.mode, "primary");
     assert.equal(parsed.agent.system.mode, "subagent");
+    assert.equal(parsed.agent.network.tools.execute, false);
+    assert.equal(parsed.agent.system.tools.execute, true);
     assert.equal(parsed.agent.network.permission.task.system, "allow");
     assert.equal(parsed.agent.network.permission.task.network, undefined);
     assert.equal(parsed.agent.network.permission.skill["network-diagnose"], "allow");

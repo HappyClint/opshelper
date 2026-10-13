@@ -55,14 +55,16 @@ export function normalizeV2Messages(values: Row[], sessionID: string) {
         ...(value.files ?? []).map((file: Row, index: number) => ({ id: `${value.id}:file:${index}`, type: "file", url: file.uri, filename: file.name, mime: file.mime ?? "application/octet-stream" })),
       ] });
     } else if (value.type === "assistant") {
+      // V2 SSE ordinals count text blocks only, excluding reasoning and tools.
+      let textOrdinal = 0;
       result.push({ info: { id: value.id, sessionID, role: "assistant", parentID, agent: value.agent,
         time: value.time, finish: value.finish, error: value.error, runtimeVersion: 2, terminal: false },
       parts: (value.content ?? []).map((part: Row, index: number) => {
-        if (part.type !== "tool") return { id: `${value.id}:${index}`, sessionID, messageID: value.id, type: part.type, text: part.text,
+        if (part.type !== "tool") return { id: part.type === "text" ? `${value.id}:text:${textOrdinal++}` : `${value.id}:${index}`, sessionID, messageID: value.id, type: part.type, text: part.text,
           time: { start: value.time.created, ...(value.time.completed ? { end: value.time.completed } : {}) } };
         const state = row(part.state);
         return { id: part.id, sessionID, messageID: value.id, type: "tool", tool: part.name === "subagent" ? "task" : part.name === "shell" ? "bash" : part.name,
-          state: { status: state.status, input: part.name === "skill" ? { ...row(state.input), name: state.input?.id } : state.input, metadata: { ...row(state.metadata), sessionId: state.metadata?.sessionID }, output: (state.content ?? []).filter((item: Row) => item.type === "text").map((item: Row) => item.text).join("\n").replace(/ sessionID="[^"]+"/g, ""),
+          state: { status: state.status, input: part.name === "skill" ? { ...row(state.input), name: state.input?.id } : state.input, metadata: { ...row(state.metadata), sessionId: state.metadata?.sessionID }, output: (state.content ?? []).filter((item: Row) => item.type === "text").map((item: Row) => item.text).join("\n").replace(/ sessionID="[^"]+"/g, "") || undefined,
             error: state.error ? String(state.error.message ?? state.error) : undefined, time: part.time } };
       }) });
     } else if (value.type === "idle" && parentID) {
@@ -90,11 +92,11 @@ export function normalizeV2Event(event: Row): Row {
     info: { id: messageID, sessionID: data.sessionID, role: "assistant" },
   } };
   if (event.type === "session.text.delta") return { ...common, type: "message.part.delta", properties: {
-    sessionID: data.sessionID, messageID, partID: `${messageID}:${data.ordinal}`, field: "text", delta: data.delta,
+    sessionID: data.sessionID, messageID, partID: `${messageID}:text:${data.ordinal}`, field: "text", delta: data.delta,
   } };
   if (event.type === "session.text.started" || event.type === "session.text.ended") return {
     ...common, type: "message.part.updated", properties: { part: {
-      id: `${messageID}:${data.ordinal}`, messageID, sessionID: data.sessionID, type: "text", text: data.text ?? "",
+      id: `${messageID}:text:${data.ordinal}`, messageID, sessionID: data.sessionID, type: "text", text: data.text ?? "",
       time: event.type.endsWith("ended") ? { end: event.created } : { start: event.created },
     } },
   };
