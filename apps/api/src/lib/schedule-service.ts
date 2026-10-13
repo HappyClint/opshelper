@@ -508,6 +508,17 @@ export async function runScheduleNow(userId: string, scheduleId: string, request
   let result;
   try {
     result = await prisma.$transaction(async (tx) => {
+      // Serialize manual admission with pause's schedule update. The earlier
+      // dependency checks must not authorize work after pause has committed.
+      const locked = await tx.$queryRaw<Array<{ status: ScheduleStatus }>>`
+        SELECT "status" FROM "Schedule"
+        WHERE "id" = ${schedule.id} AND "userId" = ${userId}
+        FOR UPDATE
+      `;
+      if (!locked.length) throw new ScheduleServiceError("定时任务不存在", 404);
+      if (locked[0].status === ScheduleStatus.PAUSED) {
+        throw new ScheduleServiceError("暂停的任务不能立即运行", 409);
+      }
       const run = await tx.scheduleRun.create({
         data: {
           scheduleId: schedule.id,

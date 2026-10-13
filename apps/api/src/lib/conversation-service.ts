@@ -1424,7 +1424,7 @@ async function observeExecution(execution: Execution, connection?: RuntimeConnec
   return state;
 }
 
-async function claimNextExecution() {
+export async function claimNextExecution() {
   const candidateIds = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT ranked."id"
     FROM (
@@ -1462,8 +1462,10 @@ async function claimNextExecution() {
             include: { agent: true },
           });
       const leaseOwner = randomUUID();
-      const execution = await tx.execution.update({
-        where: { id: candidate.id },
+      // Pause/cancel can commit after the queue read without taking the user
+      // config lock. Claim only if this execution is still queued.
+      const claimed = await tx.execution.updateMany({
+        where: { id: candidate.id, status: ExecutionStatus.QUEUED },
         data: {
           status: ExecutionStatus.DISPATCHING,
           dispatchAttemptId: randomUUID(),
@@ -1474,6 +1476,8 @@ async function claimNextExecution() {
           } : {}),
         },
       });
+      if (claimed.count !== 1) return null;
+      const execution = await tx.execution.findUniqueOrThrow({ where: { id: candidate.id } });
       await tx.containerInstance.update({
         where: { userId: candidate.userId },
         data: {
