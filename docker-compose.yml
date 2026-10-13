@@ -38,7 +38,7 @@ services:
     command: ["npm", "run", "db:migrate"]
     environment:
       DATABASE_URL: postgresql://opshelper:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/opshelper
-      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:1.18.34}
+      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:2.0.27}
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,7 +51,7 @@ services:
     environment:
       DATABASE_URL: postgresql://opshelper:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/opshelper
       OPSHELPER_ADMIN_PASSWORD: ${OPSHELPER_ADMIN_PASSWORD:-}
-      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:1.18.34}
+      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:2.0.27}
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,7 +75,7 @@ services:
       DATA_ROOT: /data
       # 即使传入 API，这仍是 Docker 创建每用户 bind 时使用的宿主路径；不能写 /data。
       DATA_ROOT_HOST: ${DATA_ROOT_HOST:?set DATA_ROOT_HOST to the absolute host data directory}
-      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:1.18.34}
+      OPENCODE_DOCKER_IMAGE: ${OPENCODE_DOCKER_IMAGE:-opshelper/opencode-runtime:2.0.27}
       OPENCODE_DOCKER_PORT: 4096
       OPENCODE_WORKING_DIR: /workspace
       OPENCODE_RUNTIME_UID: ${OPSHELPER_UID:-1000}

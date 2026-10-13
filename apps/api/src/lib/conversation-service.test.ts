@@ -417,16 +417,13 @@ test("子会话详情只接受所属会话树中的排障编号并清理原生 I
   assert.throws(() => collaborationDetail(state, "000000000000"), /子智能体会话不存在/);
 });
 
-test("会话 task 权限不会将通配禁止继承给子智能体，并禁止 primary 与内置智能体", () => {
-  const rules = nativeTaskPermissions({ agentKeys: ["lead", "sub"], taskAgentKeys: ["sub"] });
-  assert.deepEqual(rules[0], { permission: "task", pattern: "*", action: "allow" });
-  assert.equal(rules.find((rule) => rule.pattern === "lead")?.action, "deny");
-  assert.equal(rules.find((rule) => rule.pattern === "sub")?.action, "allow");
-  for (const key of ["build", "plan", "general", "explore", "compaction", "title", "summary"]) {
-    assert.equal(rules.find((rule) => rule.pattern === key)?.action, "deny");
-  }
+test("V2 会话 subagent 权限默认禁止，仅明确允许已分配的协作智能体", () => {
+  assert.deepEqual(nativeTaskPermissions({ agentKeys: ["lead", "sub"], taskAgentKeys: ["sub"] }), [
+    { action: "subagent", resource: "*", effect: "deny" },
+    { action: "subagent", resource: "sub", effect: "allow" },
+  ]);
 });
 
 test("旧清单缺少可委派列表时不会允许 primary 委派", () => {
-  assert.equal(nativeTaskPermissions({ agentKeys: ["lead"] }).find((rule) => rule.pattern === "lead")?.action, "deny");
+  assert.equal(nativeTaskPermissions({ agentKeys: ["lead"] })[0].effect, "deny");
 });

@@ -86,8 +86,8 @@ test("装配只包含获配智能体，同一内容复用代次，重建保留�
       "所有交付文件必须保存在 /workspace。\n",
     );
     assert.equal(parsed.small_model, parsed.model);
-    assert.equal(parsed.subagent_depth, 24);
-  assert.equal(parsed.experimental.continue_loop_on_deny, true);
+    assert.equal(parsed.experimental.subagent_depth, 24);
+    assert.equal(parsed.experimental.continue_loop_on_deny, undefined);
     assert.equal(parsed.default_agent, "network");
     assert.equal(parsed.agent.network.mode, "primary");
     assert.equal(parsed.agent.system.mode, "subagent");
@@ -95,7 +95,7 @@ test("装配只包含获配智能体，同一内容复用代次，重建保留�
     assert.equal(parsed.agent.network.permission.task.network, undefined);
     assert.equal(parsed.agent.network.permission.skill["network-diagnose"], "allow");
     assert.equal(parsed.agent.system.permission.skill["network-diagnose"], undefined);
-    assert.equal(parsed.mcp["network-observer"].url, "https://mcp.example.com/mcp");
+    assert.equal(parsed.mcp.servers["network-observer"].url, "https://mcp.example.com/mcp");
     assert.equal(parsed.tools["network-observer_*"], false);
     assert.equal(parsed.agent.network.tools["network-observer_*"], true);
     assert.equal(parsed.agent.system.tools?.["network-observer_*"], undefined);

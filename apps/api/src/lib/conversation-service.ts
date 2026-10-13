@@ -37,7 +37,7 @@ import { ConversationTextProjector, conversationEventFrame, readRuntimeEvents } 
 import { resolveUserPathSafe } from "./file-service";
 import { runtimeAuthorization, type ManagedRuntime } from "./managed-runtime";
 import { prisma } from "./prisma";
-import { refreshNativeSessionTreeTaskPermissions } from "./native-session-permissions";
+import { normalizeV2Messages, normalizeV2Form, normalizeV2Event, v2FormAnswer, v2List, v2Request, RuntimeRequestError } from "./opencode-v2";
 import { withUserConfigLock } from "./user-config-lock";
 
 const config = loadConfig();
@@ -68,12 +68,6 @@ function findLastItem<T>(items: T[], predicate: (item: T) => boolean): T | undef
 
 export class ConversationServiceError extends Error {
   constructor(message: string, public statusCode = 400) {
-    super(message);
-  }
-}
-
-class RuntimeRequestError extends Error {
-  constructor(message: string, public readonly statusCode: number) {
     super(message);
   }
 }
@@ -352,7 +346,7 @@ export async function readExecutionAnswer(
   const messages = await runtimeRequest<unknown[]>(
     connection,
     "GET",
-    `/session/${conversation.nativeSessionId}/message`,
+    `/api/session/${conversation.nativeSessionId}/message`,
     undefined,
     15_000,
   );
@@ -445,27 +439,16 @@ async function runtimeRequest<T>(
   body?: unknown,
   timeoutMs = 30_000,
 ): Promise<T> {
-  const separator = route.includes("?") ? "&" : "?";
-  const response = await fetch(
-    `${connection.target}${route}${separator}directory=${encodeURIComponent("/workspace")}`,
-    {
-      method,
-      headers: {
-        authorization: connection.authorization,
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    },
-  );
-  const text = await response.text();
-  if (!response.ok) {
-    throw new RuntimeRequestError(
-      `OpenCode ${method} ${route} 返回 ${response.status}${text ? `：${text.slice(0, 300)}` : ""}`,
-      response.status,
-    );
+  if (method === "GET" && (route === "/api/session" || /^\/api\/session\/[^/]+\/message$/.test(route))) {
+    const values = await v2List(connection, route);
+    return (route === "/api/session" ? values : normalizeV2Messages(values, route.split("/")[3])) as T;
   }
-  return (text ? JSON.parse(text) : undefined) as T;
+  const result = await v2Request<any>(connection, method, route, body, timeoutMs);
+  const data = result?.data ?? result;
+  if (route === "/api/session/active") return Object.fromEntries(Object.entries(data ?? {}).map(([id]) => [id, { type: "busy" }])) as T;
+  if (route === "/api/form") return data.map(normalizeV2Form) as T;
+  if (route === "/api/permission/request") return data.map((item: any) => ({ ...item, permission: item.action, patterns: item.resources })) as T;
+  return data as T;
 }
 
 async function assignedAgents(userId: string) {
@@ -538,18 +521,12 @@ async function requireOwnedExecution(userId: string, executionId: string) {
   return execution;
 }
 
-// Only assigned agents exist in the immutable runtime catalog. Explicit denials
-// keep primary and built-in agents unavailable without a wildcard denial that
-// OpenCode 1.18 would inherit into every descendant (dropping its allow exceptions).
+// Session permissions are replaced atomically by V2 PATCH. Deny by default;
+// allow only assigned collaborators, including when resuming stored children.
 export function nativeTaskPermissions(runtime: Pick<ManagedRuntime, "agentKeys" | "taskAgentKeys">) {
-  const allowed = new Set(runtime.taskAgentKeys ?? []);
   return [
-    { permission: "task", pattern: "*", action: "allow" },
-    ...[...new Set(["build", "plan", "general", "explore", "compaction", "title", "summary", ...runtime.agentKeys])].map((key) => ({
-      permission: "task",
-      pattern: key,
-      action: allowed.has(key) ? "allow" : "deny",
-    })),
+    { action: "subagent", resource: "*", effect: "deny" },
+    ...(runtime.taskAgentKeys ?? []).map((key) => ({ action: "subagent", resource: key, effect: "allow" })),
   ];
 }
 
@@ -557,7 +534,7 @@ async function ensureNativeSession(conversation: Conversation, connection?: Runt
   if (conversation.nativeSessionId) return conversation;
   const active = connection ?? await connectRuntime(conversation.userId);
   const runtimeTitle = `opshelper:${conversation.id}`;
-  const existing = await runtimeRequest<RuntimeSession[]>(active, "GET", "/session")
+  const existing = await runtimeRequest<RuntimeSession[]>(active, "GET", "/api/session")
     .then((sessions) => sessions.find((session) => session.title === runtimeTitle))
     .catch(() => undefined);
   if (existing) {
@@ -577,9 +554,11 @@ async function ensureNativeSession(conversation: Conversation, connection?: Runt
     data: { sessionCreateAttemptId: attemptId },
   });
   try {
-    const session = await runtimeRequest<RuntimeSession>(active, "POST", "/session", {
+    const session = await runtimeRequest<RuntimeSession>(active, "POST", "/api/session", {
       title: runtimeTitle,
-      permission: nativeTaskPermissions(active.runtime),
+      location: { directory: "/workspace" },
+      agent: conversation.lastAgentKey,
+      permissions: nativeTaskPermissions(active.runtime),
     }, 120_000);
     return prisma.conversation.update({
       where: { id: conversation.id },
@@ -591,7 +570,7 @@ async function ensureNativeSession(conversation: Conversation, connection?: Runt
       },
     });
   } catch (error) {
-    const recovered = await runtimeRequest<RuntimeSession[]>(active, "GET", "/session")
+    const recovered = await runtimeRequest<RuntimeSession[]>(active, "GET", "/api/session")
       .then((sessions) => sessions.find((session) => session.title === runtimeTitle))
       .catch(() => undefined);
     if (recovered) {
@@ -771,12 +750,12 @@ export async function forkConversation(input: {
       const active = await tx.execution.findFirst({
         where: { conversationId: conversation.id, status: { in: [ExecutionStatus.QUEUED, ...activeStatuses] } },
       });
-      const statuses = await runtimeRequest<Record<string, { type?: string }>>(connection, "GET", "/session/status");
+      const statuses = await runtimeRequest<Record<string, { type?: string }>>(connection, "GET", "/api/session/active");
       const nativeStatus = statuses[conversation.nativeSessionId]?.type;
       if (active || (nativeStatus && nativeStatus !== "idle")) {
         throw new ConversationServiceError("请等待当前对话执行完成后再重新开始", 409);
       }
-      const messages = await runtimeRequest<unknown[]>(connection, "GET", `/session/${conversation.nativeSessionId}/message`);
+      const messages = await runtimeRequest<unknown[]>(connection, "GET", `/api/session/${conversation.nativeSessionId}/message`);
       const point = conversationForkPoint(messages, input.messageId);
       const historyExecutions = await visibleHistoryExecutions(input.userId, messages, []);
       const selected = runtimeMessageInfo(sanitizeRuntimeMessages([point.message], historyExecutions)[0]);
@@ -788,11 +767,11 @@ export async function forkConversation(input: {
       });
       // OpenCode excludes messageID and everything after it. The selected
       // message becomes an editable draft; the model keeps the prior turns.
-      const forked = await runtimeRequest<RuntimeSession>(connection, "POST", `/session/${conversation.nativeSessionId}/fork`, {
-        messageID: input.messageId,
+      const forked = await runtimeRequest<RuntimeSession>(connection, "POST", `/api/session/${conversation.nativeSessionId}/fork`, {
+        before: input.messageId,
       });
       forkedSessionId = forked.id;
-      const copied = await runtimeRequest<unknown[]>(connection, "GET", `/session/${forked.id}/message`);
+      const copied = await runtimeRequest<unknown[]>(connection, "GET", `/api/session/${forked.id}/message`);
       if (copied.length !== point.index) throw new ConversationServiceError("会话分支的历史边界无法确认", 503);
       const created = await tx.conversation.create({
         data: {
@@ -803,9 +782,9 @@ export async function forkConversation(input: {
           lastConfigGeneration: container.appliedGeneration,
         },
       });
-      await runtimeRequest(connection, "PATCH", `/session/${forked.id}`, {
+      await runtimeRequest(connection, "PATCH", `/api/session/${forked.id}`, {
         title: `opshelper:${created.id}`,
-        permission: nativeTaskPermissions(connection.runtime),
+        permissions: nativeTaskPermissions(connection.runtime),
       });
       return {
         conversationId: created.id,
@@ -818,7 +797,7 @@ export async function forkConversation(input: {
     // Only the new, uncommitted native session can be removed. The source and
     // its workspace are never reverted or changed by this action.
     if (forkedSessionId) {
-      await runtimeRequest(connection, "DELETE", `/session/${forkedSessionId}`).catch(() => undefined);
+      await runtimeRequest(connection, "DELETE", `/api/session/${forkedSessionId}`).catch(() => undefined);
     }
     throw error;
   }
@@ -1132,11 +1111,11 @@ export async function pruneEmptyExecutionOutputDirectories() {
 
 async function runtimeState(connection: RuntimeConnection, rootSessionId: string): Promise<RuntimeConversationState> {
   const [sessions, statuses, questions, permissions, rootMessages] = await Promise.all([
-    runtimeRequest<RuntimeSession[]>(connection, "GET", "/session"),
-    runtimeRequest<Record<string, { type?: string }>>(connection, "GET", "/session/status"),
-    runtimeRequest<RuntimeRequest[]>(connection, "GET", "/question"),
-    runtimeRequest<RuntimeRequest[]>(connection, "GET", "/permission"),
-    runtimeRequest<unknown[]>(connection, "GET", `/session/${rootSessionId}/message`),
+    runtimeRequest<RuntimeSession[]>(connection, "GET", "/api/session"),
+    runtimeRequest<Record<string, { type?: string }>>(connection, "GET", "/api/session/active"),
+    runtimeRequest<RuntimeRequest[]>(connection, "GET", "/api/form"),
+    runtimeRequest<RuntimeRequest[]>(connection, "GET", "/api/permission/request"),
+    runtimeRequest<unknown[]>(connection, "GET", `/api/session/${rootSessionId}/message`),
   ]);
   const byParent = new Map<string, RuntimeSession[]>();
   for (const session of sessions) {
@@ -1157,7 +1136,7 @@ async function runtimeState(connection: RuntimeConnection, rootSessionId: string
   }
   const children = await Promise.all(descendants.map(async (session) => ({
     session,
-    messages: await runtimeRequest<unknown[]>(connection, "GET", `/session/${session.id}/message`).catch(() => []),
+    messages: await runtimeRequest<unknown[]>(connection, "GET", `/api/session/${session.id}/message`).catch(() => []),
     status: statuses[session.id]?.type ?? "idle",
   })));
   const sessionIds = new Set([rootSessionId, ...descendants.map((session) => session.id)]);
@@ -1333,8 +1312,8 @@ async function autoApprovePendingPermissions(
     reply: (sessionId, permissionId) => runtimeRequest(
       connection,
       "POST",
-      `/session/${sessionId}/permissions/${permissionId}`,
-      { response: "once" },
+      `/api/session/${sessionId}/permission/${permissionId}/reply`,
+      { decision: "once" },
       5_000,
     ),
   });
@@ -1587,13 +1566,14 @@ async function dispatchExecution(execution: Execution) {
     }
     const conversation = await requireOwnedConversation(execution.userId, execution.conversationId);
     const readyConversation = await ensureNativeSession(conversation, connection);
-    // PATCH only appends rules: remove superseded denies before any model runs.
-    // Keep native IDs/history and recover incomplete refreshes on the next turn.
-    await refreshNativeSessionTreeTaskPermissions({
-      sessionID: readyConversation.nativeSessionId!,
-      agent: current.leadAgentKey,
-      permission: nativeTaskPermissions(connection.runtime),
-      request: (method, route, body) => runtimeRequest(connection, method, route, body),
+    await runtimeRequest(connection, "PATCH", `/api/session/${readyConversation.nativeSessionId}`, {
+      permissions: nativeTaskPermissions(connection.runtime),
+    });
+    await runtimeRequest(connection, "POST", `/api/session/${readyConversation.nativeSessionId}/agent`, { agent: current.leadAgentKey });
+    const selectedModel = current.model ?? connection.runtime.model;
+    const slash = selectedModel.indexOf("/");
+    await runtimeRequest(connection, "POST", `/api/session/${readyConversation.nativeSessionId}/model`, {
+      model: { providerID: selectedModel.slice(0, slash), id: selectedModel.slice(slash + 1) },
     });
 
     const stillCurrent = await withUserConfigLock(execution.userId, async (tx) => {
@@ -1616,18 +1596,12 @@ async function dispatchExecution(execution: Execution) {
     await runtimeRequest(
       connection,
       "POST",
-      `/session/${readyConversation.nativeSessionId}/prompt_async`,
+      `/api/session/${readyConversation.nativeSessionId}/prompt`,
       {
-        agent: current.leadAgentKey,
-        model: (() => {
-          const selectedModel = current.model ?? connection.runtime.model;
-          const slash = selectedModel.indexOf("/");
-          return slash > 0 ? {
-            providerID: selectedModel.slice(0, slash),
-            modelID: selectedModel.slice(slash + 1),
-          } : undefined;
-        })(),
-        parts: promptParts(current, plannedCollaborators),
+        id: `msg_opshelper_${current.promptMarker.replaceAll("-", "")}`,
+        text: promptParts(current, plannedCollaborators).filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("\n"),
+        files: asAttachments(current.attachments).map((file) => ({ uri: `file://${file.path}`, name: file.filename })),
+        delivery: "queue",
       },
       120_000,
     );
@@ -1773,7 +1747,7 @@ async function rejectPendingInteractions(
   state: RuntimeConversationState,
 ) {
   await Promise.all(state.questions.map((question) =>
-    runtimeRequest(connection, "POST", `/question/${question.id}/reject`),
+    runtimeRequest(connection, "DELETE", `/api/session/${question.sessionID}/form/${question.id}`),
   ));
   await Promise.all(state.permissions.map(async (permission) => {
     const sessionId = permission.sessionID ?? permission.sessionId;
@@ -1781,8 +1755,8 @@ async function rejectPendingInteractions(
     await runtimeRequest(
       connection,
       "POST",
-      `/session/${sessionId}/permissions/${permission.id}`,
-      { response: "reject" },
+      `/api/session/${sessionId}/permission/${permission.id}/reply`,
+      { decision: "reject" },
     ).catch(() => undefined);
   }));
 }
@@ -1812,7 +1786,11 @@ export async function abortExecution(userId: string, executionId: string, timedO
   });
   try {
     const connection = await connectExistingRuntime(userId);
-    await runtimeRequest(connection, "POST", `/session/${execution.conversation.nativeSessionId}/abort`, {});
+    const beforeStop = scopeExecutionState(await runtimeState(connection, execution.conversation.nativeSessionId), execution, execution.conversation.nativeSessionId);
+    await runtimeRequest(connection, "DELETE", `/api/session/${execution.conversation.nativeSessionId}/inbox/msg_opshelper_${execution.promptMarker.replaceAll("-", "")}`);
+    for (const sessionID of [...beforeStop.sessionIds].reverse()) {
+      await runtimeRequest(connection, "POST", `/api/session/${sessionID}/interrupt?resume=false`);
+    }
     const pending = await runtimeState(connection, execution.conversation.nativeSessionId);
     await rejectPendingInteractions(connection, pending);
     let observed = await prisma.execution.findUniqueOrThrow({ where: { id: execution.id } });
@@ -1854,7 +1832,8 @@ export async function replyConversationQuestion(
   if (!state.questions.some((item) => item.id === requestId)) {
     throw new ConversationServiceError("问题已经失效", 409);
   }
-  await runtimeRequest(connection, "POST", `/question/${requestId}/reply`, { answers });
+  const form = state.questions.find((item) => item.id === requestId)!;
+  await runtimeRequest(connection, "POST", `/api/session/${form.sessionID}/form/${requestId}/reply`, { answer: v2FormAnswer(form, answers) });
   await prisma.execution.update({
     where: { id: execution.id },
     data: { status: ExecutionStatus.RUNNING, waitingSince: null },
@@ -1881,8 +1860,8 @@ export async function replyConversationPermission(
   await runtimeRequest(
     connection,
     "POST",
-    `/session/${sessionId}/permissions/${permissionId}`,
-    { response },
+    `/api/session/${sessionId}/permission/${permissionId}/reply`,
+    { decision: response },
   );
   await prisma.execution.update({
     where: { id: execution.id },
@@ -2111,7 +2090,7 @@ export async function openConversationEvents(userId: string, conversationId: str
   const deadline = setTimeout(abort, 15_000);
   const connectedAt = Date.now();
   try {
-    const response = await fetch(`${connection.target}/event?directory=%2Fworkspace`, {
+    const response = await fetch(`${connection.target}/api/event`, {
       headers: { authorization: connection.authorization, accept: "text/event-stream" },
       signal: controller.signal,
     });
@@ -2125,7 +2104,7 @@ export async function openConversationEvents(userId: string, conversationId: str
     // Subscribe first. OpenCode persists the full text only at text-end; the
     // stream preserves the deltas generated while the initial snapshot loads.
     const [messages, executionIds] = await Promise.all([
-      runtimeRequest<unknown[]>(connection, "GET", `/session/${conversation.nativeSessionId}/message`),
+      runtimeRequest<unknown[]>(connection, "GET", `/api/session/${conversation.nativeSessionId}/message`),
       readExecutionIds(),
     ]);
     const inherited = await visibleHistoryExecutions(userId, messages, []);
@@ -2139,7 +2118,8 @@ export async function openConversationEvents(userId: string, conversationId: str
         for (const text of initial) yield conversationEventFrame("text", text);
         yield conversationEventFrame("ready");
         let lastChanged = 0;
-        for await (const event of readRuntimeEvents(body)) {
+        for await (const rawEvent of readRuntimeEvents(body)) {
+          const event = normalizeV2Event(rawEvent);
           if (signal.aborted) break;
           if (event.type === "server.heartbeat" || event.type === "server.connected") {
             yield ": keepalive\n\n";

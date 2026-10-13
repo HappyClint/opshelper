@@ -2,7 +2,7 @@
 
 x86 离线物理机部署请使用[离线部署文档](offline-amd64.md)和发布包内的 Compose 配置，直接执行 `docker load`、`docker-compose` 命令，无需部署脚本。下文用于持有源码的开发机及既有 `scripts/opshelper.py` 部署。
 
-当前版本面向全新单机部署。保持 TypeScript / Fastify / Next.js / PostgreSQL 16 / Docker；每用户一个固定 OpenCode 1.18.34 容器。管理员分配智能体，用户使用个人对话、文件和定时任务。
+当前版本面向全新单机部署。保持 TypeScript / Fastify / Next.js / PostgreSQL 16 / Docker；每用户一个固定 OpenCode 2.0.27 容器。管理员分配智能体，用户使用个人对话、文件和定时任务。
 
 ## 从空目录安装
 
@@ -14,7 +14,7 @@ x86 离线物理机部署请使用[离线部署文档](offline-amd64.md)和发�
 docker build --target api -t opshelper-api:local .
 docker build --target worker -t opshelper-worker:local .
 docker build --target web -t opshelper-web:local .
-docker build -t opshelper/opencode-runtime:1.18.34 deploy/opencode-runtime
+docker build -t opshelper/opencode-runtime:2.0.27 deploy/opencode-runtime
 ```
 
 源码部署若复用已加载的镜像，须先将 `.env` 中各镜像变量设为实际标签，并跳过构建。离线发布约定见[离线部署文档](offline-amd64.md)。
@@ -62,6 +62,8 @@ deployment/
 要开放局域网，在 `.env` 将 `OPSHELPER_HTTP_HOST` 改成指定局域网 IP，再重新 `up`；必须实际访问 `/health`，Docker 显示端口映射不等于入口可达。生产公网入口应配置 HTTPS。账号、模型密钥和备份不可进入 Git、工单或普通日志。
 
 ## 更新与重启
+
+已有 OpenCode 1 开发实例必须先按 [OpenCode 2 切换说明](opencode-2-migration.md)处理旧会话关联；不能只更新镜像标签后直接启动。V2 状态保存在每用户 `state/v2/`，与旧状态分离。本次不新增 Prisma migration，不运行 seed。
 
 本版本只支持新 schema 的部署，不接管旧系统数据库或 volume。升级前使用[备份恢复](backup-restore.md)停写备份，保留完整旧镜像和发布目录；完成后重新 `up`。不要将当前迁移直接用于改造前数据库，也不要使用 `prisma db push` 作为部署升级命令。
 

@@ -4,7 +4,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 
 import { hashPassword } from "../apps/api/src/lib/password";
 
-const defaultOpencodeRuntimeImage = "opshelper/opencode-runtime:1.18.34";
+const defaultOpencodeRuntimeImage = "opshelper/opencode-runtime:2.0.27";
 
 export function resolveSeedContainerImage(
   env: Pick<NodeJS.ProcessEnv, "OPENCODE_DOCKER_IMAGE">,

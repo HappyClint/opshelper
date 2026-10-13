@@ -66,6 +66,7 @@ export function isFinalAssistant(message: unknown) {
   const info = messageInfo(message);
   if (info?.role !== "assistant") return false;
   if (info.error != null) return true;
+  if (info.runtimeVersion === 2 && info.terminal !== true) return false;
 
   const time = info.time;
   const completed = time && typeof time === "object" && !Array.isArray(time)

@@ -13,7 +13,7 @@ test("seed uses the configured opencode runtime image for container records", ()
 });
 
 test("seed falls back to the default opencode runtime image", () => {
-  assert.equal(resolveSeedContainerImage({}), "opshelper/opencode-runtime:1.18.34");
+  assert.equal(resolveSeedContainerImage({}), "opshelper/opencode-runtime:2.0.27");
 });
 
 test("fresh installation requires an explicit strong bootstrap password", () => {
