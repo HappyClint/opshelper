@@ -9,7 +9,7 @@ const absolutePath = z.string().refine((value) => path.isAbsolute(value), {
 const configSchema = z.object({
   apiHost: z.string().default("0.0.0.0"),
   port: z.coerce.number().int().positive().default(4000),
-  opencodeImage: z.string().default("opshelper/opencode-runtime:1.18.34"),
+  opencodeImage: z.string().default("opshelper/opencode-runtime:2.0.27"),
   opencodePort: z.coerce.number().int().positive().default(4096),
   opencodeDirectory: z.literal("/workspace").default("/workspace"),
   idleTimeoutMinutes: z.coerce.number().nonnegative().default(60),

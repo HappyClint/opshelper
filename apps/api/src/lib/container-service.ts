@@ -1,3 +1,4 @@
+import { v2List, v2Request } from "./opencode-v2";
 import Docker from "dockerode";
 import { isDockerNotFound, stopDockerContainerIfRunning as stopRuntimeIfRunning } from "@opshelper/shared";
 import { randomUUID } from "node:crypto";
@@ -428,7 +429,7 @@ async function startContainerRecordUnlocked(record: ContainerWithUser, suppliedR
   let healthy = false;
   while (Date.now() < healthDeadline) {
     const responses = await Promise.all([
-      "/global/health", "/agent?directory=%2Fworkspace", "/session?directory=%2Fworkspace",
+      "/api/info", "/api/agent", "/api/session",
     ].map((route) => fetch(`${getContainerProxyTarget(record)}${route}`, {
       headers: { authorization: runtimeAuthorization(password) },
       signal: AbortSignal.timeout(2_000),
@@ -445,7 +446,18 @@ async function startContainerRecordUnlocked(record: ContainerWithUser, suppliedR
     throw new Error("OpenCode 健康检查未通过");
   }
 
-  const actualAgentKeys = await fetchActualBusinessAgentKeys(record);
+  // A listening V2 server can precede location/configuration initialization.
+  // Gate READY on the exact managed catalog, not merely on HTTP 200.
+  let actualAgentKeys: string[] = [];
+  const agentDeadline = Date.now() + 60_000;
+  while (Date.now() < agentDeadline) {
+    await Promise.all(expected.runtime.agentKeys.map((key) =>
+      fetchRuntimeJson(record, `/api/agent/${encodeURIComponent(key)}`).catch(() => undefined),
+    ));
+    actualAgentKeys = await fetchActualBusinessAgentKeys(record).catch(() => []);
+    if (JSON.stringify(actualAgentKeys) === JSON.stringify(expected.runtime.agentKeys)) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
   if (
     actualAgentKeys.length !== expected.runtime.agentKeys.length ||
     actualAgentKeys.some((key, index) => key !== expected.runtime.agentKeys[index])
@@ -526,20 +538,19 @@ const internalAgentKeys = new Set([
 ]);
 
 async function fetchRuntimeJson(record: ContainerInstance, route: string) {
-  const response = await fetch(`${getContainerProxyTarget(record)}${route}`, {
-    headers: { authorization: runtimeAuthorization(await getRuntimePassword(record.userId)) },
-    signal: AbortSignal.timeout(3_000),
-  });
-  if (!response.ok) throw new Error(`OpenCode ${route} 返回 ${response.status}`);
-  return response.json() as Promise<unknown>;
+  const connection = { target: getContainerProxyTarget(record), authorization: runtimeAuthorization(await getRuntimePassword(record.userId)) };
+  if (route === "/api/session") return v2List(connection, route);
+  const result = await v2Request<any>(connection, "GET", route, undefined, 3_000);
+  if (route === "/api/session/active") return Object.fromEntries(Object.keys(result.data).map((id) => [id, { type: "busy" }]));
+  return result.data ?? result;
 }
 
 export async function fetchActualBusinessAgentKeys(record: ContainerInstance) {
-  const payload = await fetchRuntimeJson(record, "/agent?directory=%2Fworkspace");
+  const payload = await fetchRuntimeJson(record, "/api/agent");
   const keys = Array.isArray(payload)
     ? payload.flatMap((entry) => {
       if (!entry || typeof entry !== "object") return [];
-      const name = (entry as { name?: unknown }).name;
+      const name = (entry as { id?: unknown }).id;
       return typeof name === "string" ? [name] : [];
     })
     : payload && typeof payload === "object"
@@ -550,10 +561,10 @@ export async function fetchActualBusinessAgentKeys(record: ContainerInstance) {
 
 export async function getRuntimeWorkState(record: ContainerInstance) {
   const [status, questions, permissions, sessions] = await Promise.all([
-    fetchRuntimeJson(record, "/session/status?directory=%2Fworkspace"),
-    fetchRuntimeJson(record, "/question?directory=%2Fworkspace"),
-    fetchRuntimeJson(record, "/permission?directory=%2Fworkspace"),
-    fetchRuntimeJson(record, "/session?directory=%2Fworkspace"),
+    fetchRuntimeJson(record, "/api/session/active"),
+    fetchRuntimeJson(record, "/api/form"),
+    fetchRuntimeJson(record, "/api/permission/request"),
+    fetchRuntimeJson(record, "/api/session"),
   ]);
   const busySessionIds = status && typeof status === "object"
     ? Object.entries(status)

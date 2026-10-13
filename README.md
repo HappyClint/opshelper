@@ -52,7 +52,7 @@ flowchart LR
 | Web | Next.js 15、React 19，提供对话工作区和管理界面 |
 | API | Fastify、Prisma、Dockerode，处理登录、智能体分配、执行队列、配置发布和容器生命周期 |
 | Worker | 登记到期任务，回收空闲用户容器；任务执行由 API 统一驱动 |
-| 执行环境 | OpenCode 1.18.34，以 `opencode serve` 运行，使用 HTTP API 与 SSE 对接平台 |
+| 执行环境 | OpenCode 2.0.27，以 `opencode2 serve` 运行，使用 HTTP API 与 SSE 对接平台 |
 | 数据存储 | PostgreSQL 16 保存平台业务数据，宿主目录保存智能体配置、用户文件和 OpenCode 状态 |
 | 部署 | Docker Compose 管理平台服务，nginx 提供统一访问入口 |
 
@@ -79,7 +79,7 @@ flowchart LR
 docker build --target api -t opshelper-api:local .
 docker build --target worker -t opshelper-worker:local .
 docker build --target web -t opshelper-web:local .
-docker build -t opshelper/opencode-runtime:1.18.34 deploy/opencode-runtime
+docker build -t opshelper/opencode-runtime:2.0.27 deploy/opencode-runtime
 ```
 
 **2. 生成部署配置**
@@ -166,7 +166,7 @@ npm run build:web
 - [管理员手册](docs/guide/admin.md)
 - [用户手册](docs/guide/user.md)
 - [源码部署](docs/guide/deployment.md)
-- [OpenCode 1.18 升级与回退](docs/guide/opencode-1.18-upgrade.md)
+- [OpenCode 2 切换、验证与恢复](docs/guide/opencode-2-migration.md)
 - [Linux x86_64 离线部署](docs/guide/offline-amd64.md)
 - [备份与恢复](docs/guide/backup-restore.md)
 - [故障处理](docs/guide/troubleshooting.md)

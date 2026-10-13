@@ -15,6 +15,7 @@ import {
   executionAnswerText,
   executionInteractionGuidance,
   executionPromptMarker,
+  executionPromptPayload,
   executionUsesOutputDirectory,
   ownedConversationWhere,
   resolveExecutionPromptText,
@@ -22,6 +23,55 @@ import {
   sanitizeRuntimeMessages,
   summarizeMessage,
 } from "./conversation-service";
+
+test("V2 提示保留任意附件路径，但不把 ZIP、表格和二进制文件发送为模型附件", () => {
+  const attachments = [
+    { path: "/workspace/files/archive.zip", filename: "archive.zip", mime: "application/zip" },
+    { path: "/workspace/files/report.xlsx", filename: "report.xlsx", mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+    { path: "/workspace/files/program.bin", filename: "program.bin", mime: "application/octet-stream" },
+  ];
+  const payload = executionPromptPayload({
+    id: "execution-files", inputText: "检查附件", source: ExecutionSource.CHAT,
+    attachments, promptMarker: "prompt-files",
+  });
+
+  assert.deepEqual(payload.files, []);
+  for (const file of attachments) assert.ok(payload.text.includes(`${file.filename}（${file.path}）`));
+  assert.ok(payload.text.includes("检查附件"));
+  assert.ok(payload.text.includes(executionPromptMarker("prompt-files")));
+  assert.equal(payload.id, "msg_opshelper_promptfiles");
+  assert.equal(payload.delivery, "queue");
+});
+
+test("V2 混合附件仅将图片、文本和 PDF 加入模型载荷，所有路径仍可用于工具读取", () => {
+  const attachments = [
+    { path: "/workspace/files/photo.png", filename: "photo.png", mime: "image/png" },
+    { path: "/workspace/files/archive.zip", filename: "archive.zip", mime: "application/zip" },
+    { path: "/workspace/files/notes.txt", filename: "notes.txt", mime: "text/plain" },
+    { path: "/workspace/files/report.pdf", filename: "report.pdf", mime: "application/pdf" },
+  ];
+  const payload = executionPromptPayload({
+    id: "execution-mixed", inputText: "检查附件", source: ExecutionSource.CHAT,
+    attachments, promptMarker: "prompt-mixed",
+  });
+
+  assert.deepEqual(payload.files, [
+    { uri: "file:///workspace/files/photo.png", name: "photo.png" },
+    { uri: "file:///workspace/files/notes.txt", name: "notes.txt" },
+    { uri: "file:///workspace/files/report.pdf", name: "report.pdf" },
+  ]);
+  for (const file of attachments) assert.ok(payload.text.includes(file.path));
+});
+
+test("V2 无附件提示维持空文件列表", () => {
+  const payload = executionPromptPayload({
+    id: "execution-text", inputText: "你好", source: ExecutionSource.CHAT,
+    attachments: [], promptMarker: "prompt-text",
+  });
+  assert.deepEqual(payload.files, []);
+  assert.ok(payload.text.startsWith("你好"));
+  assert.ok(!payload.text.includes("我上传了以下文件"));
+});
 
 test("会话分支边界只接受当前历史里的用户消息，包括附件消息", () => {
   const messages = [
@@ -417,16 +467,13 @@ test("子会话详情只接受所属会话树中的排障编号并清理原生 I
   assert.throws(() => collaborationDetail(state, "000000000000"), /子智能体会话不存在/);
 });
 
-test("会话 task 权限不会将通配禁止继承给子智能体，并禁止 primary 与内置智能体", () => {
-  const rules = nativeTaskPermissions({ agentKeys: ["lead", "sub"], taskAgentKeys: ["sub"] });
-  assert.deepEqual(rules[0], { permission: "task", pattern: "*", action: "allow" });
-  assert.equal(rules.find((rule) => rule.pattern === "lead")?.action, "deny");
-  assert.equal(rules.find((rule) => rule.pattern === "sub")?.action, "allow");
-  for (const key of ["build", "plan", "general", "explore", "compaction", "title", "summary"]) {
-    assert.equal(rules.find((rule) => rule.pattern === key)?.action, "deny");
-  }
+test("V2 会话 subagent 权限默认禁止，仅明确允许已分配的协作智能体", () => {
+  assert.deepEqual(nativeTaskPermissions({ agentKeys: ["lead", "sub"], taskAgentKeys: ["sub"] }), [
+    { action: "subagent", resource: "*", effect: "deny" },
+    { action: "subagent", resource: "sub", effect: "allow" },
+  ]);
 });
 
 test("旧清单缺少可委派列表时不会允许 primary 委派", () => {
-  assert.equal(nativeTaskPermissions({ agentKeys: ["lead"] }).find((rule) => rule.pattern === "lead")?.action, "deny");
+  assert.equal(nativeTaskPermissions({ agentKeys: ["lead"] })[0].effect, "deny");
 });

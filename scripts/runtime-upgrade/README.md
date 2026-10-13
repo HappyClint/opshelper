@@ -1,5 +1,7 @@
 # OpenCode 1.x 升级验收
 
+> 历史 V1 验证资料。当前代码和执行镜像已切换到 OpenCode 2，以下 V1 协议探针不适用于当前版本，也不能用当前 Dockerfile 构建 V1 镜像。当前流程见 [V2 验证说明](../opencode2-validation/README.md)。
+
 使用真实的 1.17.9 / 1.18.34 执行容器和隔离的 API、worker、web、nginx、PostgreSQL。模型和 MCP 服务由本地确定性 fixture 提供；不使用生产数据库、用户目录或模型密钥。默认测试网络禁止访问互联网。
 
 先构建测试镜像（Docker 必须可用）：

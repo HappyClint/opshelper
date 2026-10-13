@@ -827,7 +827,11 @@ const defaultService = createAgentService({
     return {
       models: new Set(models.models.map((entry) => `custom/${entry.id}`)),
       tools: new Set([
-        "bash",
+        "bash", // Legacy agent packages remain importable.
+        "shell",
+        "subagent",
+        "websearch",
+        "execute",
         "edit",
         "glob",
         "grep",

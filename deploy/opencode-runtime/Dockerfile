@@ -1,8 +1,8 @@
 # 小信运维助手 opencode runtime image.
 #
-# Headless `opencode serve` — the gateway proxies the browser chat client to
-# this container's REST + SSE API on port 4096. Build:
-#   docker build -t opshelper/opencode-runtime:1.18.34 deploy/opencode-runtime
+# Headless `opencode2 serve`; only the platform API accesses the container's
+# private REST + SSE API on port 4096. Build:
+#   docker build -t opshelper/opencode-runtime:2.0.27 deploy/opencode-runtime
 FROM node:22-bookworm-slim
 
 # git is used by opencode for some workspace operations; ripgrep speeds up
@@ -23,7 +23,7 @@ RUN pip3 install --no-cache-dir --break-system-packages -r /opt/opshelper-skill-
 # Install the opencode CLI globally. Pin the version: 离线环境依赖此版本「把
 # 常用 provider(含 @ai-sdk/openai-compatible)直接编译进二进制」的行为——内网
 # OpenAI 兼容模型因此无需运行时联网下载 SDK。升级前需复验该内置行为仍在。
-RUN npm install -g opencode-ai@1.18.34
+RUN npm install -g @opencode/cli@2.0.27
 
 # Per-user writable workspace. Managed configuration is mounted read-only;
 # chat history and caches are persisted separately under /state.
@@ -36,9 +36,9 @@ ENV OPENCODE_PORT=4096
 
 ENV HOME=/home/node \
     XDG_CONFIG_HOME=/opt/opshelper/config \
-    XDG_DATA_HOME=/state/data \
-    XDG_CACHE_HOME=/state/cache \
-    XDG_STATE_HOME=/state/state \
+    XDG_DATA_HOME=/state/v2/data \
+    XDG_CACHE_HOME=/state/v2/cache \
+    XDG_STATE_HOME=/state/v2/state \
     OPENCODE_DISABLE_PROJECT_CONFIG=true \
     OPENCODE_DISABLE_EXTERNAL_SKILLS=true \
     OPENCODE_DISABLE_MODELS_FETCH=true \
@@ -48,4 +48,4 @@ ENV HOME=/home/node \
 EXPOSE 4096
 
 # The API injects independent authentication and the user's managed snapshot.
-CMD ["dumb-init", "--", "opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+CMD ["dumb-init", "--", "opencode2", "serve", "--hostname", "0.0.0.0", "--port", "4096"]

@@ -1,5 +1,7 @@
 # OpenCode 1.18.34 升级说明
 
+> 历史 V1 验证资料。当前代码和执行镜像已切换到 OpenCode 2，以下 V1 协议探针不适用于当前版本，也不能用当前 Dockerfile 构建 V1 镜像。当前流程见 [V2 切换说明](opencode-2-migration.md)。
+
 本次将默认执行镜像由 `opshelper/opencode-runtime:1.17.9` 升级到 `opshelper/opencode-runtime:1.18.34`，仍使用 OpenCode 1.x 的 REST / SSE 接口。版本来源：[官方 1.18.34 release](https://github.com/anomalyco/opencode/releases/tag/v1.18.34)。
 
 新版默认只允许一层子智能体，本项目显式配置 `subagent_depth: 24`，与现有执行监控最多收集 24 个协作会话的边界一致。新版 task 会继承父会话的 deny 规则而省略 allow 例外，因此原来的 task 通配禁止会阻止嵌套协作。会话策略改为在只包含用户获配智能体的受管目录中明确禁止 primary 和内置智能体；每次发送前刷新会话 task 权限，兼容旧会话并防止角色变化留下旧允许项。未获配智能体不进入容器配置，不能被执行。

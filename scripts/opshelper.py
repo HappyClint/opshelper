@@ -167,7 +167,7 @@ def init(args):
         'POSTGRES_PASSWORD': secrets.token_urlsafe(32), 'OPSHELPER_ADMIN_PASSWORD': secrets.token_urlsafe(24),
         'OPSHELPER_HTTP_HOST': '127.0.0.1', 'OPSHELPER_HTTP_PORT': str(args.port),
         'OPSHELPER_SESSION_COOKIE_NAME': args.project.replace('-', '_') + '_session',
-        'OPENCODE_DOCKER_IMAGE': 'opshelper/opencode-runtime:1.18.34',
+        'OPENCODE_DOCKER_IMAGE': 'opshelper/opencode-runtime:2.0.27',
     }
     # Compose interpolation is disabled by single quotes; reject newlines/quotes in paths.
     if any("'" in value or '\n' in value or '\r' in value for value in values.values()):

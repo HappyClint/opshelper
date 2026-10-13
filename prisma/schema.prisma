@@ -271,7 +271,9 @@ model ScheduleRun {
   execution                Execution?
   createdAt                DateTime             @default(now())
 
-  @@unique([scheduleId, scheduledFor])
+  // Scheduled occurrences are unique via a partial index in SQL migrations.
+  // Manual runs use Execution.userId/requestKey for idempotency instead.
+  @@index([scheduleId, scheduledFor])
   @@index([userId, createdAt])
   @@index([scheduleId, createdAt])
 }

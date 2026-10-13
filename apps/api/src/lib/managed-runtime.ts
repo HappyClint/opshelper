@@ -92,7 +92,7 @@ export async function getRuntimePassword(userId: string, config: AppConfig = loa
 }
 
 export function runtimeAuthorization(password: string) {
-  return `Basic ${Buffer.from(`opshelper:${password}`).toString("base64")}`;
+  return `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`;
 }
 
 export async function readManagedRuntime(userId: string, generation: string, config: AppConfig = loadConfig()): Promise<ManagedRuntime> {
@@ -138,7 +138,7 @@ export async function prepareManagedRuntime(
   }
   const user = getUserPaths(userId, config);
   const digest = createHash("sha256").update(JSON.stringify({
-    version: 8,
+    version: 12,
     desiredGeneration: definition.desiredGeneration,
     agents: definition.agents.map((agent) => ({
       key: agent.key,
@@ -234,12 +234,26 @@ export async function prepareManagedRuntime(
       const ownMcpPatterns: string[] = [];
       for (const [mcpKey, configuration] of Object.entries(definitionAgent.mcp)) {
         const runtimeKey = `${key}-${mcpKey}`;
-        mcp[runtimeKey] = configuration;
+        const { enabled, timeout, ...server } = configuration;
+        mcp[runtimeKey] = {
+          ...server,
+          disabled: enabled === false,
+          // Keep each MCP operation observable and individually permissioned.
+          codemode: false,
+          ...(timeout ? { timeout: { catalog: timeout, execution: timeout } } : {}),
+          ...(configuration.type === "remote" && configuration.oauth && typeof configuration.oauth === "object" ? {
+            oauth: { client_id: configuration.oauth.clientId, client_secret: configuration.oauth.clientSecret, scope: configuration.oauth.scope },
+          } : {}),
+        };
         const pattern = `${runtimeKey}_*`;
         globalMcpTools[pattern] = false;
         ownMcpPatterns.push(pattern);
       }
       const tools = Object.fromEntries([
+        // Code Mode wrappers can return without invoking anything, while
+        // models report success. Prefer observable tools; explicit opt-in
+        // remains available for agents designed to use the execute API.
+        ["execute", false] as const,
         ...definitionAgent.tools.map((tool) => [tool, true] as const),
         ...(ownSkills.length ? [["skill", true] as const] : []),
         ...ownMcpPatterns.map((pattern) => [pattern, true] as const),
@@ -250,7 +264,7 @@ export async function prepareManagedRuntime(
         prompt: prompts[key],
         ...(definitionAgent.model ? { model: definitionAgent.model } : {}),
         ...(Object.keys(tools).length ? { tools } : {}),
-        permission: { task, skill: skillPermission },
+        permission: { external_directory: "ask", task, skill: skillPermission },
       };
       const source = definitionAgent.sourceDir;
       await cp(source, path.join(staging, "agents", key), { recursive: true, dereference: false });
@@ -271,13 +285,10 @@ export async function prepareManagedRuntime(
       small_model: modelConfiguration.model,
       default_agent: defaultAgentKey, provider: modelConfiguration.provider,
       share: "disabled",
-      // 1.18 defaults to one level. Keep nested delegation available across
-      // the 24 descendants that opshelper can observe and cancel per execution.
-      subagent_depth: 24,
-      // A rejected tool stays denied; let the model explain or choose another
-      // action instead of ending without an answer and triggering recovery.
-      experimental: { continue_loop_on_deny: true },
-      ...(Object.keys(mcp).length ? { mcp, tools: globalMcpTools } : {}),
+      // V2 moves this setting under experimental. Keep the same observable
+      // descendant limit as the platform execution monitor.
+      experimental: { subagent_depth: 24 },
+      ...(Object.keys(mcp).length ? { mcp: { servers: mcp }, tools: globalMcpTools } : {}),
       agent,
     };
     await writeFile(path.join(staging, "config", "opencode", "opencode.json"), JSON.stringify(opencode, null, 2));
