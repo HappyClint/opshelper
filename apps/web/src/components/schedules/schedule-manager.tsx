@@ -375,7 +375,7 @@ export function ScheduleManager({
               <div><dt>协作智能体</dt><dd>{selected.participantAgentKeys.length ? selected.participantAgentKeys.map(agentName).join("、") : "按需使用已分配智能体"}</dd></div>
               <div><dt>输入文件</dt><dd>{selected.attachments.length ? selected.attachments.map((item) => item.filename).join("、") : "无"}</dd></div>
               <div><dt>自动授权</dt><dd>{selected.autoApprovePermissions ? "开启，仅允许本次请求" : "关闭"}</dd></div>
-              <div><dt>下次执行</dt><dd>{formatShanghaiDateTime(selected.nextRunAt)}</dd></div>
+              <div><dt>下次执行</dt><dd>{selected.status === "paused" ? "已暂停，恢复后重新计算" : formatShanghaiDateTime(selected.nextRunAt)}</dd></div>
             </dl>
             <div className="schedule-runs-head">执行记录<span>{currentDetail.runs.length} 条</span></div>
             <div className="schedule-runs">
@@ -482,7 +482,7 @@ export function ScheduleManager({
                   <span className="schedule-panel-prompt">{schedule.prompt}</span>
                   <span className="schedule-panel-foot">
                     <span className="schedule-panel-next">
-                      {schedule.nextRunAt ? `下次 ${formatShanghaiDateTime(schedule.nextRunAt)}` : "暂无后续执行"}
+                      {schedule.status === "paused" ? "已暂停，恢复后重新计算" : schedule.nextRunAt ? `下次 ${formatShanghaiDateTime(schedule.nextRunAt)}` : "暂无后续执行"}
                     </span>
                     <span className="schedule-panel-agent">{agentName(schedule.leadAgentKey)}</span>
                   </span>
