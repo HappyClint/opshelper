@@ -30,6 +30,7 @@ import type { NewConversationRequest } from "./chat/new-conversation-request";
 import {
   BrandLogo,
   IconChat,
+  IconAgent,
   IconChevron,
   IconClock,
   IconCompose,
@@ -565,6 +566,16 @@ function WorkspaceSidebar({ user }: { user: WorkspaceUser }) {
         </button>
 
         <div className="opshelper-shortcuts">
+          <Link
+            className={`opshelper-shortcut${pathname.endsWith("/agents") ? " active" : ""}`}
+            href="/agents"
+            title="智能体目录：创建并查看智能体"
+            aria-current={pathname.endsWith("/agents") ? "page" : undefined}
+            onClick={() => setShowSidebar(false)}
+          >
+            <IconAgent />
+            <span className="opshelper-shortcut-label">智能体目录</span>
+          </Link>
           <Link
             className={`opshelper-shortcut${pathname.endsWith("/schedules") ? " active" : ""}`}
             href="/schedules"

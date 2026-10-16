@@ -73,6 +73,10 @@ export async function getAdminAgentsSnapshot(): Promise<AdminAgentsSnapshot | nu
   return fetchJson<AdminAgentsSnapshot>("/v1/admin/agents");
 }
 
+export async function getUserAgentCatalogSnapshot(): Promise<AdminAgentsSnapshot | null> {
+  return fetchJson<AdminAgentsSnapshot>("/v1/users/me/agent-catalog");
+}
+
 export function getSessionCookieName() {
   return process.env.OPSHELPER_SESSION_COOKIE_NAME ?? "opshelper_session";
 }

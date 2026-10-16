@@ -117,6 +117,31 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function agentFrontmatterScalar(document: string, key: "name" | "display_name" | "description") {
+  const frontmatter = /^﻿?---\r?\n([\s\S]*?)\r?\n---/.exec(document)?.[1] ?? "";
+  const value = new RegExp(`^${key}:\\s*(.*)$`, "m").exec(frontmatter)?.[1]?.trim() ?? "";
+  try {
+    return value.startsWith("\"") ? JSON.parse(value) as string : value;
+  } catch {
+    return value;
+  }
+}
+
+function setAgentFrontmatterScalar(
+  document: string,
+  key: "name" | "display_name" | "description",
+  value: string,
+) {
+  const match = /^﻿?---\r?\n([\s\S]*?)\r?\n---/.exec(document);
+  if (!match) return document;
+  const quoted = JSON.stringify(value);
+  const field = new RegExp(`^${key}:\\s*.*$`, "m");
+  const frontmatter = field.test(match[1])
+    ? match[1].replace(field, `${key}: ${quoted}`)
+    : `${match[1]}\n${key}: ${quoted}`;
+  return `${document.slice(0, match.index)}---\n${frontmatter}\n---${document.slice(match.index + match[0].length)}`;
+}
+
 // 左侧目录树的一行文件：图标 + 文件名 + 二进制标记，缩进由深度决定。
 function AgentTreeFile({
   path,
@@ -227,10 +252,15 @@ function AgentTreeNodes({
 export function AgentManagementPanel({
   initialAgents,
   users,
+  scope = "admin",
+  onPersonalAgentsChanged,
 }: {
   initialAgents: AgentSummary[];
   users: UserItem[];
+  scope?: "admin" | "user";
+  onPersonalAgentsChanged?: () => Promise<void>;
 }) {
+  const adminScope = scope === "admin";
   const [tab, setTab] = useState<Tab>("catalog");
   const [agents, setAgents] = useState(initialAgents);
   const [query, setQuery] = useState("");
@@ -265,6 +295,14 @@ export function AgentManagementPanel({
     () => parseAgentReferences(files["agent.md"] ?? ""),
     [files],
   );
+  const agentName = agentFrontmatterScalar(
+    files["agent.md"] ?? "",
+    agentFrontmatterScalar(files["agent.md"] ?? "", "display_name") ? "display_name" : "name",
+  );
+  const agentDescription = agentFrontmatterScalar(files["agent.md"] ?? "", "description");
+  const agentNameField = agentFrontmatterScalar(files["agent.md"] ?? "", "display_name")
+    ? "display_name"
+    : "name";
   const fileTree = useMemo(
     () => buildAgentFileTree(editorFileNames, references.skills),
     [editorFileNames, references.skills],
@@ -335,7 +373,7 @@ export function AgentManagementPanel({
   }
 
   async function refreshAgents(preferredKey?: string | null) {
-    const snapshot = await listAgents();
+    const snapshot = await listAgents(scope);
     setAgents(snapshot.agents);
     if (preferredKey === null) {
       setSelectedKey(null);
@@ -355,7 +393,7 @@ export function AgentManagementPanel({
       return;
     }
     let active = true;
-    getAgent(selectedKey)
+    getAgent(selectedKey, scope)
       .then(({ agent }) => {
         if (!active) return;
         setDetail(agent);
@@ -366,10 +404,10 @@ export function AgentManagementPanel({
       })
       .catch((error) => toast.error(errorMessage(error, "读取智能体失败")));
     return () => { active = false; };
-  }, [editorMode, selectedKey]);
+  }, [editorMode, scope, selectedKey]);
 
   useEffect(() => {
-    if (tab !== "assignments" || !selectedUserId) return;
+    if (!adminScope || tab !== "assignments" || !selectedUserId) return;
     let active = true;
     setAssignmentBusy(true);
     getUserAgentAssignments(selectedUserId)
@@ -381,7 +419,7 @@ export function AgentManagementPanel({
       .catch((error) => toast.error(errorMessage(error, "读取分配状态失败")))
       .finally(() => { if (active) setAssignmentBusy(false); });
     return () => { active = false; };
-  }, [selectedUserId, tab]);
+  }, [adminScope, selectedUserId, tab]);
 
   function beginCreate() {
     setEditorMode("create");
@@ -429,10 +467,17 @@ export function AgentManagementPanel({
     selectFile("mcp.json");
   }
 
+  function updateAgentMetadata(field: "name" | "display_name" | "description", value: string) {
+    setFiles((current) => ({
+      ...current,
+      "agent.md": setAgentFrontmatterScalar(current["agent.md"] ?? NEW_AGENT_TEMPLATE, field, value),
+    }));
+  }
+
   async function uploadSkillPackage(file: File) {
     setBusy(true);
     try {
-      const imported = await importAgentSkillPackage(file);
+      const imported = await importAgentSkillPackage(file, scope);
       const importedNames = [...Object.keys(imported.files), ...Object.keys(imported.binaryFiles)];
       const conflict = importedNames.find((name) => Object.hasOwn(files, name) || Object.hasOwn(binaryFiles, name));
       if (conflict) throw new Error(`技能文件已存在：${conflict}`);
@@ -489,15 +534,17 @@ export function AgentManagementPanel({
     setBusy(true);
     try {
       if (editorMode === "create") {
-        const response = await createAgent({ key: agentKey.trim(), files, binaryFiles });
-        toast.success("智能体已创建并通过检查");
+        const response = await createAgent({ key: agentKey.trim(), files, binaryFiles }, scope);
+        toast.success(adminScope ? "智能体已创建并通过检查" : "智能体已创建，正在装配到你的运行环境");
         setEditorMode("view");
         await refreshAgents(response.agent.key);
+        if (!adminScope) await onPersonalAgentsChanged?.();
       } else if (detail) {
-        await updateAgent(detail.key, { files, binaryFiles });
-        toast.success("目录已保存，受影响用户正在应用新配置");
+        await updateAgent(detail.key, { files, binaryFiles }, scope);
+        toast.success(adminScope ? "目录已保存，受影响用户正在应用新配置" : "智能体已保存，正在更新你的运行环境");
         setEditorMode("view");
         await refreshAgents(detail.key);
+        if (!adminScope) await onPersonalAgentsChanged?.();
       }
     } catch (error) {
       toast.error(errorMessage(error, "保存智能体失败"));
@@ -512,7 +559,7 @@ export function AgentManagementPanel({
     try {
       await checkAgent(detail.key);
       await refreshAgents(detail.key);
-      const response = await getAgent(detail.key);
+      const response = await getAgent(detail.key, scope);
       setDetail(response.agent);
       toast.success("模型、工具、技能和脚本检查通过");
     } catch (error) {
@@ -528,7 +575,7 @@ export function AgentManagementPanel({
     try {
       await setAgentEnabled(agent.key, enabled);
       await refreshAgents(agent.key);
-      const response = await getAgent(agent.key);
+      const response = await getAgent(agent.key, scope);
       setDetail(response.agent);
       toast.success(enabled ? "智能体已启用" : "智能体已停用，相关用户环境正在重新装配");
     } catch (error) {
@@ -540,7 +587,7 @@ export function AgentManagementPanel({
   }
 
   async function deleteSelectedAgent(agent: AgentDetail) {
-    if (agent.assignmentCount > 0) {
+    if (adminScope && agent.assignmentCount > 0) {
       toast.error(`该智能体仍分配给 ${agent.assignmentCount} 位用户，请先撤销分配`);
       return;
     }
@@ -560,7 +607,7 @@ export function AgentManagementPanel({
 
     setBusy(true);
     try {
-      await deleteAgent(agent.key);
+      await deleteAgent(agent.key, scope);
       setAgents((current) => current.filter((item) => item.key !== agent.key));
       setSelectedKey(null);
       setDetail(null);
@@ -569,6 +616,7 @@ export function AgentManagementPanel({
       await refreshAgents(null).catch(() => {
         toast.error("智能体已删除，但目录刷新失败，请重新载入页面");
       });
+      if (!adminScope) await onPersonalAgentsChanged?.();
     } catch (error) {
       toast.error(errorMessage(error, "删除智能体失败"));
     } finally {
@@ -626,12 +674,14 @@ export function AgentManagementPanel({
 
   return (
     <div className="agent-admin">
-      <div className="agent-admin-tabs" role="tablist" aria-label="智能体管理">
-        <button className={tab === "catalog" ? "active" : ""} type="button" onClick={() => setTab("catalog")}>智能体目录</button>
-        <button className={tab === "assignments" ? "active" : ""} type="button" onClick={() => setTab("assignments")}>用户分配</button>
-        <button className={tab === "models" ? "active" : ""} type="button" onClick={() => setTab("models")}>模型连接</button>
-        <button className={tab === "instructions" ? "active" : ""} type="button" onClick={() => setTab("instructions")}>全局规则</button>
-      </div>
+      {adminScope ? (
+        <div className="agent-admin-tabs" role="tablist" aria-label="智能体管理">
+          <button className={tab === "catalog" ? "active" : ""} type="button" onClick={() => setTab("catalog")}>智能体目录</button>
+          <button className={tab === "assignments" ? "active" : ""} type="button" onClick={() => setTab("assignments")}>用户分配</button>
+          <button className={tab === "models" ? "active" : ""} type="button" onClick={() => setTab("models")}>模型连接</button>
+          <button className={tab === "instructions" ? "active" : ""} type="button" onClick={() => setTab("instructions")}>全局规则</button>
+        </div>
+      ) : null}
 
       {tab === "catalog" ? (
         <div className={`agent-admin-layout ${editorMode === "create" || selectedKey ? "agent-admin-detail-mode" : "agent-admin-list-mode"}`}>
@@ -639,7 +689,7 @@ export function AgentManagementPanel({
             <div className="agent-catalog-heading">
               <div>
                 <h2>智能体目录</h2>
-                <p>管理团队共用的智能体</p>
+                <p>{adminScope ? "管理团队共用的智能体" : "创建并查看智能体目录"}</p>
               </div>
               <span>{agentCatalogCount(agents.length, filteredAgents.length, searching)}</span>
             </div>
@@ -733,9 +783,9 @@ export function AgentManagementPanel({
                 <div className="panel-header agent-editor-header">
                   <div className="agent-editor-heading">
                     <div className="panel-title">{editorMode === "create" ? "新建智能体" : editorMode === "edit" ? `编辑 ${detail?.displayName ?? "智能体"}` : detail?.displayName}</div>
-                    {detail ? <div className="muted mono" title={detail.contentHash ? `内容 hash：${detail.contentHash}` : undefined}>{detail.key}</div> : <div className="muted">配置基本信息、能力包与外部工具，保存检查通过后再分配给用户。</div>}
+                    {detail ? <div className="muted mono" title={detail.contentHash ? `内容 hash：${detail.contentHash}` : undefined}>{detail.key}</div> : <div className="muted">{adminScope ? "配置基本信息、能力包与外部工具，保存检查通过后再分配给用户。" : "配置基本信息、能力包与外部工具，保存后系统会自动分配给你。"}</div>}
                   </div>
-                  {detail && editorMode === "view" ? <button className="button" type="button" onClick={() => setEditorMode("edit")}>编辑智能体</button> : null}
+                  {(adminScope || detail?.canManage) && detail && editorMode === "view" ? <button className="button" type="button" onClick={() => setEditorMode("edit")}>编辑智能体</button> : null}
                 </div>
 
                 {detail?.checkError ? <div className="agent-alert agent-alert-error"><strong>依赖检查失败</strong><span>{detail.checkError}</span></div> : null}
@@ -752,47 +802,78 @@ export function AgentManagementPanel({
                       <div><dt>Skill</dt><dd>{new Set(Object.keys({ ...detail.files, ...(detail.binaryFiles ?? {}) }).filter((name) => name.startsWith("skills/")).map((name) => name.split("/")[1])).size} 个</dd></div>
                       <div><dt>MCP</dt><dd>{detail.files["mcp.json"] ? "已配置" : "未配置"}</dd></div>
                     </dl>
-                    <div className="inline-actions">
-                      <button className="button-secondary" type="button" disabled={busy} onClick={runCheck}>重新检查</button>
-                      {detail.isEnabled ? (
-                        <button className="button-warning" type="button" disabled={busy} onClick={() => setDisableTarget(detail)}>停用</button>
-                      ) : (
-                        <button className="button" type="button" disabled={busy || detail.checkStatus !== "ready"} onClick={() => changeEnabled(detail, true)}>启用</button>
-                      )}
-                      <span
-                        className="agent-delete-trigger"
-                        tabIndex={detail.assignmentCount > 0 ? 0 : undefined}
-                        role={detail.assignmentCount > 0 ? "group" : undefined}
-                        aria-label={detail.assignmentCount > 0 ? "删除不可用" : undefined}
-                        aria-describedby={detail.assignmentCount > 0 ? "agent-delete-hint" : undefined}
-                        data-hint-dismissed={deleteHintDismissed}
-                        onMouseEnter={() => setDeleteHintDismissed(false)}
-                        onFocus={() => setDeleteHintDismissed(false)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") setDeleteHintDismissed(true);
-                        }}
-                      >
+                    {adminScope ? (
+                      <div className="inline-actions">
+                        <button className="button-secondary" type="button" disabled={busy} onClick={runCheck}>重新检查</button>
+                        {detail.isEnabled ? (
+                          <button className="button-warning" type="button" disabled={busy} onClick={() => setDisableTarget(detail)}>停用</button>
+                        ) : (
+                          <button className="button" type="button" disabled={busy || detail.checkStatus !== "ready"} onClick={() => changeEnabled(detail, true)}>启用</button>
+                        )}
+                        <span
+                          className="agent-delete-trigger"
+                          tabIndex={detail.assignmentCount > 0 ? 0 : undefined}
+                          role={detail.assignmentCount > 0 ? "group" : undefined}
+                          aria-label={detail.assignmentCount > 0 ? "删除不可用" : undefined}
+                          aria-describedby={detail.assignmentCount > 0 ? "agent-delete-hint" : undefined}
+                          data-hint-dismissed={deleteHintDismissed}
+                          onMouseEnter={() => setDeleteHintDismissed(false)}
+                          onFocus={() => setDeleteHintDismissed(false)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") setDeleteHintDismissed(true);
+                          }}
+                        >
+                          <button
+                            className="button-danger"
+                            type="button"
+                            disabled={busy || detail.assignmentCount > 0}
+                            onClick={() => { void deleteSelectedAgent(detail); }}
+                          >
+                            {busy ? "处理中…" : "删除"}
+                          </button>
+                          {detail.assignmentCount > 0 ? (
+                            <span className="agent-delete-hint" id="agent-delete-hint" role="tooltip">
+                              仍分配给 {detail.assignmentCount} 位用户，请先在“用户分配”中撤销。
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                    ) : detail.canManage ? (
+                      <div className="inline-actions">
                         <button
                           className="button-danger"
                           type="button"
-                          disabled={busy || detail.assignmentCount > 0}
+                          disabled={busy}
                           onClick={() => { void deleteSelectedAgent(detail); }}
                         >
                           {busy ? "处理中…" : "删除"}
                         </button>
-                        {detail.assignmentCount > 0 ? (
-                          <span className="agent-delete-hint" id="agent-delete-hint" role="tooltip">
-                            仍分配给 {detail.assignmentCount} 位用户，请先在“用户分配”中撤销。
-                          </span>
-                        ) : null}
-                      </span>
-                    </div>
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <div className="stack">
                     {editorMode === "create" ? (
                       <label className="field"><span className="field-label">目录 key</span><input className="field-input mono" value={agentKey} onChange={(event) => setAgentKey(event.target.value)} placeholder="network-ops" /></label>
                     ) : null}
+                    <label className="field">
+                      <span className="field-label">智能体名称</span>
+                      <input
+                        className="field-input"
+                        value={agentName}
+                        onChange={(event) => updateAgentMetadata(agentNameField, event.target.value)}
+                        placeholder="例如：网络运维助手"
+                      />
+                    </label>
+                    <label className="field">
+                      <span className="field-label">职责说明</span>
+                      <input
+                        className="field-input"
+                        value={agentDescription}
+                        onChange={(event) => updateAgentMetadata("description", event.target.value)}
+                        placeholder="说明这个智能体负责的工作范围"
+                      />
+                    </label>
                     <div className="agent-editor-actions">
                       <input ref={skillUploadRef} hidden type="file" accept=".zip,application/zip" onChange={(event) => {
                         const file = event.target.files?.[0];
@@ -976,7 +1057,7 @@ export function AgentManagementPanel({
             )}
           </section>
         </div>
-      ) : tab === "assignments" ? (
+      ) : adminScope && tab === "assignments" ? (
         <div className="agent-assignment-layout">
           <section className="agent-user-list" aria-label="用户列表">
             {activeUsers.map((user) => (
@@ -1023,7 +1104,7 @@ export function AgentManagementPanel({
             ) : <div className="um-detail-placeholder"><div className="muted">{assignmentBusy ? "正在读取分配状态…" : "选择一个用户分配智能体。"}</div></div>}
           </section>
         </div>
-      ) : tab === "models" ? (
+      ) : adminScope && tab === "models" ? (
         <section className="panel agent-model-panel">
           <div className="panel-header">
             <div>
@@ -1033,7 +1114,7 @@ export function AgentManagementPanel({
           </div>
           <ModelManager onDirty={() => toast.info("模型配置已保存，用户环境正在更新")} />
         </section>
-      ) : (
+      ) : adminScope ? (
         <section className="panel global-instructions-panel">
           <div className="panel-header">
             <div>
@@ -1043,7 +1124,7 @@ export function AgentManagementPanel({
           </div>
           <GlobalInstructionsManager />
         </section>
-      )}
+      ) : null}
 
       <ConfirmDialog
         open={skillDeleteTarget !== null}
@@ -1055,16 +1136,18 @@ export function AgentManagementPanel({
         onConfirm={() => { if (skillDeleteTarget) removeSkillDirectory(skillDeleteTarget); }}
       />
 
-      <ConfirmDialog
-        open={disableTarget !== null}
-        title={`停用 ${disableTarget?.displayName ?? "智能体"}`}
-        description="相关用户会立即停止当前协作任务并重建运行环境；历史会话和个人文件会保留。"
-        confirmLabel="停用并重新装配"
-        variant="danger"
-        busy={busy}
-        onCancel={() => setDisableTarget(null)}
-        onConfirm={() => { if (disableTarget) void changeEnabled(disableTarget, false); }}
-      />
+      {adminScope ? (
+        <ConfirmDialog
+          open={disableTarget !== null}
+          title={`停用 ${disableTarget?.displayName ?? "智能体"}`}
+          description="相关用户会立即停止当前协作任务并重建运行环境；历史会话和个人文件会保留。"
+          confirmLabel="停用并重新装配"
+          variant="danger"
+          busy={busy}
+          onCancel={() => setDisableTarget(null)}
+          onConfirm={() => { if (disableTarget) void changeEnabled(disableTarget, false); }}
+        />
+      ) : null}
     </div>
   );
 }
