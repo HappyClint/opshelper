@@ -5,6 +5,7 @@ import {
 import { Prisma, type User } from "@prisma/client";
 
 import { deleteContainerByUserId } from "./container-service";
+import { deleteAgent } from "./agent-service";
 import { removeUserDataDir } from "./file-service";
 import { hashPassword } from "./password";
 import { prisma } from "./prisma";
@@ -248,6 +249,18 @@ export async function deleteUserAccount(input: {
     nextRole: "USER",
   });
 
+  const ownedAgents = await prisma.agent.findMany({
+    where: { ownerId: user.id },
+    select: { id: true, key: true },
+  });
+  if (ownedAgents.length) {
+    await prisma.userAgent.deleteMany({
+      where: { agentId: { in: ownedAgents.map((agent) => agent.id) } },
+    });
+    for (const agent of ownedAgents) {
+      await deleteAgent(agent.key);
+    }
+  }
   await deleteContainerByUserId(user.id);
   await removeUserDataDir(user.id);
   await prisma.user.delete({

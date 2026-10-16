@@ -178,6 +178,7 @@ export interface AgentSummary {
   checkError: string | null;
   checkedAt: string | null;
   assignmentCount: number;
+  canManage: boolean;
 }
 
 export interface AgentDetail extends AgentSummary {

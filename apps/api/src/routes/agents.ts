@@ -71,7 +71,7 @@ function serializeAgent(record: {
   checkError: string | null;
   checkedAt: Date | null;
   _count?: { users: number };
-}) {
+}, canManage = true) {
   return {
     id: record.id,
     key: record.key,
@@ -84,6 +84,7 @@ function serializeAgent(record: {
     checkError: record.checkError,
     checkedAt: record.checkedAt?.toISOString() ?? null,
     assignmentCount: record._count?.users ?? 0,
+    canManage,
   };
 }
 
@@ -92,7 +93,21 @@ async function listAgentSummaries() {
     include: { _count: { select: { users: true } } },
     orderBy: { key: "asc" },
   });
-  return agents.map(serializeAgent);
+  return agents.map((agent) => serializeAgent(agent));
+}
+
+async function listUserVisibleAgentSummaries(userId: string) {
+  const agents = await prisma.agent.findMany({
+    where: {
+      OR: [
+        { ownerId: userId },
+        { users: { some: { userId } } },
+      ],
+    },
+    include: { _count: { select: { users: true } } },
+    orderBy: { key: "asc" },
+  });
+  return agents.map((agent) => serializeAgent(agent, agent.ownerId === userId));
 }
 
 function decodeDirectoryFiles(input: { files: Record<string, string>; binaryFiles?: Record<string, string> }) {
@@ -106,7 +121,7 @@ function decodeDirectoryFiles(input: { files: Record<string, string>; binaryFile
   return files;
 }
 
-async function serializeAgentDetail(key: string) {
+async function serializeAgentDetail(key: string, canManage = true) {
   const [detail, record] = await Promise.all([
     getAgent(key),
     prisma.agent.findUniqueOrThrow({
@@ -121,7 +136,31 @@ async function serializeAgentDetail(key: string) {
     if (isUtf8Text(content)) files[name] = content.toString("utf8");
     else binaryFiles[name] = encoded;
   }
-  return { ...serializeAgent(record), files, binaryFiles };
+  return { ...serializeAgent(record, canManage), files, binaryFiles };
+}
+
+async function getUserVisibleAgent(userId: string, key: string) {
+  const agent = await prisma.agent.findFirst({
+    where: {
+      key,
+      OR: [
+        { ownerId: userId },
+        { users: { some: { userId } } },
+      ],
+    },
+    select: { ownerId: true },
+  });
+  if (!agent) throw new AgentServiceError("Agent 不存在或未分配给当前用户", 404);
+  return serializeAgentDetail(key, agent.ownerId === userId);
+}
+
+async function requireOwnedAgent(userId: string, key: string) {
+  const agent = await prisma.agent.findFirst({
+    where: { key, ownerId: userId },
+    select: { id: true },
+  });
+  if (!agent) throw new AgentServiceError("只能管理自己创建的智能体", 403);
+  return agent;
 }
 
 async function affectedUserIds(key: string) {
@@ -176,7 +215,11 @@ async function buildUserAssignmentSnapshot(userId: string) {
   const [user, assigned, agents, configuration] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     listUserAgentAssignments(userId),
-    listAgentSummaries(),
+    prisma.agent.findMany({
+      where: { OR: [{ ownerId: null }, { ownerId: userId }] },
+      include: { _count: { select: { users: true } } },
+      orderBy: { key: "asc" },
+    }).then((agents) => agents.map((agent) => serializeAgent(agent))),
     getUserRuntimeConfiguration(userId),
   ]);
   if (!user || !configuration) throw new AgentServiceError("用户不存在", 404);
@@ -213,6 +256,100 @@ async function buildUserAssignmentSnapshot(userId: string) {
 }
 
 export async function registerAgentRoutes(app: FastifyInstance) {
+  app.get("/v1/users/me/agent-catalog", async (request, reply) => {
+    const user = await requireSession(request, reply);
+    if (!user) return;
+    return { agents: await listUserVisibleAgentSummaries(user.id) };
+  });
+
+  app.get<{ Params: { key: string } }>("/v1/users/me/agent-catalog/:key", async (request, reply) => {
+    const user = await requireSession(request, reply);
+    if (!user) return;
+    try {
+      return { agent: await getUserVisibleAgent(user.id, request.params.key) };
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.post("/v1/users/me/agent-catalog/skill-package", async (request, reply) => {
+    if (!await requireSession(request, reply)) return;
+    try {
+      const upload = await request.file();
+      if (!upload) return reply.code(400).send({ message: "请选择 ZIP 技能包" });
+      if (!upload.filename.toLowerCase().endsWith(".zip")) {
+        return reply.code(400).send({ message: "技能包必须是 .zip 文件" });
+      }
+      return importSkillPackage(await upload.toBuffer());
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.post("/v1/users/me/agent-catalog", { bodyLimit: 90 * 1024 * 1024 }, async (request, reply) => {
+    const user = await requireSession(request, reply);
+    if (!user) return;
+    const parsed = createSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ message: "智能体目录内容不完整" });
+    try {
+      const created = await createAgent({
+        key: parsed.data.key,
+        files: decodeDirectoryFiles(parsed.data),
+        ownerId: user.id,
+      });
+      await ensureContainerRecordForUser(user.id);
+      const assigned = await listUserAgentAssignments(user.id);
+      const desiredAgentIds = Array.from(new Set([...assigned.map((entry) => entry.agentId), created.id]));
+      await withAgentConfigLocks(desiredAgentIds, () => withUserConfigLock(user.id, async () => {
+        await replaceUserAgentAssignments(user.id, desiredAgentIds);
+      }));
+      await applyUserRuntimeConfiguration(user.id);
+      return reply.code(201).send({ agent: await serializeAgentDetail(parsed.data.key, true) });
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.patch<{ Params: { key: string } }>("/v1/users/me/agent-catalog/:key", { bodyLimit: 90 * 1024 * 1024 }, async (request, reply) => {
+    const user = await requireSession(request, reply);
+    if (!user) return;
+    const parsed = patchSchema.safeParse(request.body);
+    if (!parsed.success || !("files" in parsed.data)) {
+      return reply.code(400).send({ message: "修改内容不正确" });
+    }
+    try {
+      const agent = await requireOwnedAgent(user.id, request.params.key);
+      await withAgentConfigLocks([agent.id], () => withUserConfigLock(user.id, async () => {
+        await updateAgent(request.params.key, { files: decodeDirectoryFiles(parsed.data) });
+      }));
+      await applyUserRuntimeConfiguration(user.id);
+      return { agent: await serializeAgentDetail(request.params.key, true) };
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.delete<{ Params: { key: string } }>("/v1/users/me/agent-catalog/:key", async (request, reply) => {
+    const user = await requireSession(request, reply);
+    if (!user) return;
+    try {
+      const agent = await requireOwnedAgent(user.id, request.params.key);
+      await withAgentConfigLocks([agent.id], () => withUserConfigLock(user.id, async () => {
+        await replaceUserAgentAssignments(
+          user.id,
+          (await listUserAgentAssignments(user.id))
+            .filter((assignment) => assignment.agentId !== agent.id)
+            .map((assignment) => assignment.agentId),
+        );
+        await deleteAgent(request.params.key);
+      }));
+      await applyUserRuntimeConfiguration(user.id);
+      return reply.code(204).send();
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
   app.get("/v1/admin/agents", async (request, reply) => {
     if (!await requireAdmin(request, reply)) return;
     return { agents: await listAgentSummaries() };

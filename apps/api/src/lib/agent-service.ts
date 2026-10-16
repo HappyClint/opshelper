@@ -79,6 +79,7 @@ export class AgentServiceError extends Error {
 export interface AgentDirectoryInput {
   key: string;
   files: Record<string, string | Uint8Array>;
+  ownerId?: string;
 }
 
 export interface AgentDependencyCatalog {
@@ -536,6 +537,7 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
         record = await dependencies.prisma.agent.create({
           data: {
             key,
+            ownerId: input.ownerId,
             displayName: validated.displayName,
             description: validated.description,
             mode: validated.mode,
@@ -713,7 +715,12 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
     return dependencies.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, isActive: true } });
       if (!user?.isActive) throw new AgentServiceError("用户不存在或已停用", 404);
-      const agents = await tx.agent.findMany({ where: { id: { in: desiredIds } } });
+      const agents = await tx.agent.findMany({
+        where: {
+          id: { in: desiredIds },
+          OR: [{ ownerId: null }, { ownerId: userId }],
+        },
+      });
       if (agents.length !== desiredIds.length) throw new AgentServiceError("分配清单包含不存在的 Agent");
       const invalid = agents.find((agent) => !agent.isEnabled || agent.checkStatus !== "READY");
       if (invalid) throw new AgentServiceError(`Agent「${invalid.key}」未启用或检查未通过`);
