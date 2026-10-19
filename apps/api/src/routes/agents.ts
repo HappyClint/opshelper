@@ -298,9 +298,9 @@ export async function registerAgentRoutes(app: FastifyInstance) {
         ownerId: user.id,
       });
       await ensureContainerRecordForUser(user.id);
-      const assigned = await listUserAgentAssignments(user.id);
-      const desiredAgentIds = Array.from(new Set([...assigned.map((entry) => entry.agentId), created.id]));
-      await withAgentConfigLocks(desiredAgentIds, () => withUserConfigLock(user.id, async () => {
+      await withAgentConfigLocks([created.id], () => withUserConfigLock(user.id, async () => {
+        const assigned = await listUserAgentAssignments(user.id);
+        const desiredAgentIds = Array.from(new Set([...assigned.map((entry) => entry.agentId), created.id]));
         await replaceUserAgentAssignments(user.id, desiredAgentIds);
       }));
       await applyUserRuntimeConfiguration(user.id);
@@ -322,7 +322,8 @@ export async function registerAgentRoutes(app: FastifyInstance) {
       await withAgentConfigLocks([agent.id], () => withUserConfigLock(user.id, async () => {
         await updateAgent(request.params.key, { files: decodeDirectoryFiles(parsed.data) });
       }));
-      await applyUserRuntimeConfiguration(user.id);
+      await pauseInvalidSchedulesForUser(user.id);
+      queueUserRuntimeConfiguration(user.id);
       return { agent: await serializeAgentDetail(request.params.key, true) };
     } catch (error) {
       return handleAgentError(reply, error);

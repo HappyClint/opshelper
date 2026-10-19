@@ -137,7 +137,7 @@ function setAgentFrontmatterScalar(
   const quoted = JSON.stringify(value);
   const field = new RegExp(`^${key}:\\s*.*$`, "m");
   const frontmatter = field.test(match[1])
-    ? match[1].replace(field, `${key}: ${quoted}`)
+    ? match[1].replace(field, () => `${key}: ${quoted}`)
     : `${match[1]}\n${key}: ${quoted}`;
   return `${document.slice(0, match.index)}---\n${frontmatter}\n---${document.slice(match.index + match[0].length)}`;
 }
