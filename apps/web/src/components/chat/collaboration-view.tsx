@@ -63,7 +63,6 @@ export function CollaborationView({ conversationId, traceId }: { conversationId:
           assistant={{ id: child.agentKey, name: child.agentKey, description: "子智能体尚未输出消息" }}
           busy={child.status === "running"}
           sessionId={traceId}
-          onPick={() => {}}
           onRestartFrom={() => {}}
           forkingMessageId={null}
           executions={[]}

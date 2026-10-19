@@ -1,6 +1,6 @@
 import { FileManager } from "@/components/file-manager";
 import { IconFolder } from "@/components/chat/icons";
-import { WorkspaceMenuButton } from "@/components/workspace-shell";
+import { WorkspaceMenuButton, WorkspaceUserMenu } from "@/components/workspace-shell";
 
 export default async function FilesPage({
   searchParams,
@@ -19,6 +19,7 @@ export default async function FilesPage({
           <h1 className="opshelper-topbar-title">我的文件</h1>
           <div className="opshelper-topbar-sub">所有智能体共用的完整文件管理</div>
         </div>
+        <WorkspaceUserMenu />
       </header>
       <div className="user-files-page">
         <section className="user-files-content">

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { IconSliders } from "@/components/chat/icons";
 import { UserSettings } from "@/components/user-settings";
-import { WorkspaceMenuButton } from "@/components/workspace-shell";
+import { WorkspaceMenuButton, WorkspaceUserMenu } from "@/components/workspace-shell";
 import { getSession, getUserPortalSnapshot } from "@/lib/api";
 
 // 与 /files、/schedules 同属工作台页面：共用工作台外壳、页面顶栏与 .opshelper-page-body 画布，
@@ -29,6 +29,7 @@ export default async function UserSettingsPage() {
           <h1 className="opshelper-topbar-title">个人设置</h1>
           <div className="opshelper-topbar-sub">工作台容器、账户信息与密码</div>
         </div>
+        <WorkspaceUserMenu />
       </header>
       <div className="opshelper-page-body">
         <UserSettings snapshot={snapshot} />

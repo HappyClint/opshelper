@@ -1,6 +1,4 @@
-import Image from "next/image";
-
-import brandLogo from "../../../public/brand/xiaoxin-ops-icon.png";
+import brandCharacters from "../../../public/brand/xiaoxin-wordmark-characters.png";
 
 // Chat-UI icon set. These are self-contained SVGs styled by the `opshelper-icon`
 // class (a different visual system from the file-manager's `file-icons.tsx`),
@@ -374,8 +372,14 @@ export function IconAlert() {
 
 export function BrandLogo() {
   return (
-    <span className="opshelper-brand-mark" aria-hidden="true">
-      <Image src={brandLogo} alt="" width={40} height={40} priority />
-    </span>
+    <span
+      className="opshelper-brand-wordmark"
+      role="img"
+      aria-label="小信"
+      style={{
+        WebkitMaskImage: `url(${brandCharacters.src})`,
+        maskImage: `url(${brandCharacters.src})`,
+      }}
+    />
   );
 }

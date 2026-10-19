@@ -8,6 +8,8 @@ import { UploadFloater } from "@/components/upload-floater";
 
 import "./globals.css";
 import "./chat.css";
+import "./chat-theme.css";
+import "./app-theme.css";
 
 const display = Space_Grotesk({
   subsets: ["latin"],

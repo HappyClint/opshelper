@@ -21,7 +21,6 @@ import {
   archiveConversation,
   getConversation,
   listConversations,
-  logout,
 } from "@/lib/browser-api";
 import { AgentMark } from "./chat/assistant";
 import { resolveConversationHistory, RECENT_CONVERSATION_LIMIT } from "./chat/conversation-history";
@@ -41,9 +40,12 @@ import {
 import { ConversationArchiveAction } from "./chat/conversation-archive-action";
 import { ConversationDraftProvider, useConversationDraftStore } from "./chat/conversation-draft-provider";
 import { conversationDraftKey, hasDraft } from "./chat/conversation-drafts";
+import { UserMenu } from "./user-menu";
 
 const CHAT_CONTEXT_KEY = "opshelper:conversation";
 const CHAT_AGENT_KEY = "opshelper:agent";
+const CHAT_THEME_KEY = "opshelper:chat-theme";
+export type ChatTheme = "pine" | "mist";
 // “显示更早”按钮要从可用高度里扣掉：展开过一次后量它的真实高度，
 // 首次渲染时按钮还没挂载，用与 CSS 对齐的兜底值（行高 40 + 外边距 6）。
 const FOLD_RESERVE_FALLBACK = 46;
@@ -56,6 +58,7 @@ type WorkspaceUser = {
 };
 
 interface WorkspaceContextValue {
+  user: WorkspaceUser;
   agents: ConversationAgent[];
   conversations: ConversationSummary[];
   activeAgent: ConversationAgent | null;
@@ -64,6 +67,8 @@ interface WorkspaceContextValue {
   executionBlockedReason: string | null;
   showAttachments: boolean;
   showSidebar: boolean;
+  chatTheme: ChatTheme;
+  setChatTheme: (theme: ChatTheme) => void;
   newConversationRequest: NewConversationRequest | null;
   acknowledgeNewConversationRequest: (requestId: number) => void;
   refreshHome: (preferredConversationId?: string | null, options?: { activate?: boolean }) => Promise<void>;
@@ -119,6 +124,7 @@ export function WorkspaceShell({
   const [loading, setLoading] = useState(true);
   const [showAttachments, setShowAttachments] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [chatTheme, setChatThemeState] = useState<ChatTheme>("pine");
   const [newConversationRequest, setNewConversationRequest] = useState<NewConversationRequest | null>(null);
   const newConversationSequenceRef = useRef(0);
   const activeAgentKeyRef = useRef<string | null>(null);
@@ -130,6 +136,24 @@ export function WorkspaceShell({
   // Archive callbacks may outlive the route they were invoked from.
   const currentRouteRef = useRef({ pathname, conversationId: searchParams.get("conversation") });
   currentRouteRef.current = { pathname, conversationId: searchParams.get("conversation") };
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CHAT_THEME_KEY);
+      if (saved === "pine" || saved === "mist") setChatThemeState(saved);
+    } catch {
+      // Browser storage may be unavailable.
+    }
+  }, []);
+
+  const setChatTheme = useCallback((theme: ChatTheme) => {
+    setChatThemeState(theme);
+    try {
+      window.localStorage.setItem(CHAT_THEME_KEY, theme);
+    } catch {
+      // Browser storage may be unavailable.
+    }
+  }, []);
 
   const setActiveAgent = useCallback((agentKey: string | null) => {
     navigationGenerationRef.current += 1;
@@ -313,6 +337,7 @@ export function WorkspaceShell({
   }, []);
 
   const contextValue = useMemo<WorkspaceContextValue>(() => ({
+    user,
     agents,
     conversations,
     activeAgent,
@@ -321,6 +346,8 @@ export function WorkspaceShell({
     executionBlockedReason,
     showAttachments,
     showSidebar,
+    chatTheme,
+    setChatTheme,
     newConversationRequest,
     acknowledgeNewConversationRequest,
     refreshHome,
@@ -337,6 +364,7 @@ export function WorkspaceShell({
     acknowledgeNewConversationRequest,
     activateConversation,
     agents,
+    chatTheme,
     conversations,
     executionBlockedReason,
     loading,
@@ -344,17 +372,22 @@ export function WorkspaceShell({
     refreshHome,
     removeConversation,
     selectAgent,
+    setChatTheme,
     showAttachments,
     showSidebar,
     startNewConversation,
     updateConversation,
+    user,
   ]);
 
   return (
     <ConversationDraftProvider key={user.username} userKey={user.username}>
       <WorkspaceContext.Provider value={contextValue}>
-        <div className={`opshelper-shell${showAttachments ? " opshelper-shell-files" : ""}${showSidebar ? " opshelper-sidebar-open" : ""}`}>
-          <WorkspaceSidebar user={user} />
+        <div
+          className={`opshelper-shell opshelper-chat-shell${showAttachments ? " opshelper-shell-files" : ""}${showSidebar ? " opshelper-sidebar-open" : ""}`}
+          data-chat-theme={chatTheme}
+        >
+          <WorkspaceSidebar />
           <button
             className="opshelper-sidebar-scrim"
             type="button"
@@ -384,24 +417,129 @@ export function WorkspaceMenuButton() {
   );
 }
 
-function WorkspaceSidebar({ user }: { user: WorkspaceUser }) {
+export function AgentSwitcher() {
+  const { agents, activeAgent, loading, selectAgent } = useWorkspace();
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    const selectedIndex = Math.max(0, agents.findIndex((item) => item.key === activeAgent?.key));
+    requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [activeAgent?.key, agents, open]);
+
+  const chooseAgent = (agentKey: string) => {
+    selectAgent(agentKey);
+    setOpen(false);
+    requestAnimationFrame(() => buttonRef.current?.focus());
+  };
+
+  const handleOptionKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? agents.length - 1
+        : (index + (event.key === "ArrowDown" ? 1 : -1) + agents.length) % agents.length;
+    optionRefs.current[next]?.focus();
+  };
+
+  return (
+    <div className="opshelper-agent-switcher" ref={wrapRef}>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="opshelper-topbar-agent-button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={menuId}
+        disabled={loading || agents.length === 0}
+        title={activeAgent ? `${activeAgent.name}：${activeAgent.description}` : "请联系管理员分配智能体"}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        {activeAgent ? (
+          <AgentMark
+            id={activeAgent.key}
+            name={activeAgent.name}
+            description={activeAgent.description}
+          />
+        ) : <span className="opshelper-agent-mark" />}
+        <span className="opshelper-topbar-agent-name">{activeAgent?.name ?? "暂无可用智能体"}</span>
+        <IconChevron open={open} />
+      </button>
+      {open ? (
+        <div
+          className="opshelper-agent-menu opshelper-topbar-agent-menu"
+          id={menuId}
+          role="listbox"
+          aria-label="切换智能体"
+        >
+          {agents.map((agent, index) => (
+            <button
+              key={agent.key}
+              ref={(element) => { optionRefs.current[index] = element; }}
+              type="button"
+              className={`opshelper-agent-option${agent.key === activeAgent?.key ? " active" : ""}`}
+              role="option"
+              aria-selected={agent.key === activeAgent?.key}
+              onClick={() => chooseAgent(agent.key)}
+              onKeyDown={(event) => handleOptionKey(event, index)}
+            >
+              <AgentMark id={agent.key} name={agent.name} description={agent.description} />
+              <span className="opshelper-assistant-text">
+                <span className="opshelper-assistant-name">{agent.name}</span>
+                <span className="opshelper-assistant-desc">{agent.description}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function WorkspaceUserMenu() {
+  const { user } = useWorkspace();
+  return <UserMenu user={user} context="workspace" />;
+}
+
+function WorkspaceSidebar() {
   const { drafts } = useConversationDraftStore();
   const pathname = usePathname();
   const {
-    agents,
     conversations,
     activeAgent,
     activeConversationId,
     loading,
     executionBlockedReason,
-    selectAgent,
     startNewConversation,
     removeConversation,
     showSidebar,
     setShowSidebar,
   } = useWorkspace();
   const [search, setSearch] = useState("");
-  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [showAllConversations, setShowAllConversations] = useState(false);
   const [archiveConversationId, setArchiveConversationId] = useState<string | null>(null);
   const closeArchive = useCallback(() => setArchiveConversationId(null), []);
@@ -411,23 +549,23 @@ function WorkspaceSidebar({ user }: { user: WorkspaceUser }) {
   }, [activeAgent?.key, activeConversationId, pathname, search, showAllConversations, showSidebar, closeArchive]);
   // 折叠后能列几条由可用高度决定，先按 RECENT_CONVERSATION_LIMIT 兜底，量到高度后再铺满。
   const [collapsedCapacity, setCollapsedCapacity] = useState(RECENT_CONVERSATION_LIMIT);
-  const menuId = useId();
   const conversationListId = useId();
+  const searchFieldId = useId();
   const conversationListRef = useRef<HTMLDivElement>(null);
-  const selectorRef = useRef<HTMLButtonElement>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selectorWrapRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!agentMenuOpen) return;
-    const selectedIndex = Math.max(0, agents.findIndex((item) => item.key === activeAgent?.key));
-    requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus());
-    const onPointerDown = (event: PointerEvent) => {
-      if (!selectorWrapRef.current?.contains(event.target as Node)) setAgentMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [activeAgent?.key, agentMenuOpen, agents]);
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) {
+      setSearch("");
+      setSearchOpen(false);
+    } else {
+      setSearchOpen(true);
+    }
+  }, [searchOpen]);
 
   const activeConversations = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -470,93 +608,18 @@ function WorkspaceSidebar({ user }: { user: WorkspaceUser }) {
     return () => observer.disconnect();
   }, [activeConversations.length]);
 
-  const chooseAgent = (agentKey: string) => {
-    selectAgent(agentKey);
-    setAgentMenuOpen(false);
-    requestAnimationFrame(() => selectorRef.current?.focus());
-  };
-
-  const handleOptionKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setAgentMenuOpen(false);
-      selectorRef.current?.focus();
-      return;
-    }
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    const next = event.key === "Home"
-      ? 0
-      : event.key === "End"
-        ? agents.length - 1
-        : (index + (event.key === "ArrowDown" ? 1 : -1) + agents.length) % agents.length;
-    optionRefs.current[next]?.focus();
-  };
-
   return (
     <aside className="opshelper-sidebar" id="opshelper-sidebar" aria-label="小信运维助手导航">
       <div className="opshelper-brand">
         <BrandLogo />
-        <span className="opshelper-brand-name">小信运维助手</span>
       </div>
 
-      <div className="opshelper-side-group">
-        <div className="opshelper-agent-selector" ref={selectorWrapRef}>
-          <button
-            ref={selectorRef}
-            type="button"
-            className="opshelper-agent-selector-button"
-            aria-haspopup="listbox"
-            aria-expanded={agentMenuOpen}
-            aria-controls={menuId}
-            disabled={loading || agents.length === 0}
-            // 窄栏里描述总被截断，所以触发按钮只留名字，完整描述放下拉项和 title。
-            title={activeAgent ? `${activeAgent.name}：${activeAgent.description}` : "请联系管理员分配智能体"}
-            onClick={() => setAgentMenuOpen((value) => !value)}
-            onKeyDown={(event) => {
-              if (["ArrowDown", "ArrowUp"].includes(event.key)) {
-                event.preventDefault();
-                setAgentMenuOpen(true);
-              }
-            }}
-          >
-            {activeAgent ? (
-              <AgentMark
-                id={activeAgent.key}
-                name={activeAgent.name}
-                description={activeAgent.description}
-              />
-            ) : <span className="opshelper-agent-mark" />}
-            <span className="opshelper-agent-name">{activeAgent?.name ?? "暂无可用智能体"}</span>
-            <IconChevron open={agentMenuOpen} />
-          </button>
-          {agentMenuOpen ? (
-            <div className="opshelper-agent-menu" id={menuId} role="listbox" aria-label="切换智能体">
-              {agents.map((agent, index) => (
-                <button
-                  key={agent.key}
-                  ref={(element) => { optionRefs.current[index] = element; }}
-                  type="button"
-                  className={`opshelper-agent-option${agent.key === activeAgent?.key ? " active" : ""}`}
-                  role="option"
-                  aria-selected={agent.key === activeAgent?.key}
-                  onClick={() => chooseAgent(agent.key)}
-                  onKeyDown={(event) => handleOptionKey(event, index)}
-                >
-                  <AgentMark id={agent.key} name={agent.name} description={agent.description} />
-                  <span className="opshelper-assistant-text">
-                    <span className="opshelper-assistant-name">{agent.name}</span>
-                    <span className="opshelper-assistant-desc">{agent.description}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+      <div className="opshelper-chat-side-label">工作区</div>
 
+      <div className="opshelper-side-group">
         <button
           type="button"
-          className="opshelper-new-conversation"
+          className={`opshelper-new-conversation${!activeConversationId ? " active" : ""}`}
           disabled={!activeAgent}
           onClick={() => startNewConversation()}
         >
@@ -588,21 +651,45 @@ function WorkspaceSidebar({ user }: { user: WorkspaceUser }) {
         </div>
       </div>
 
-      <div className="opshelper-search">
-        <IconSearch />
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="搜索会话"
-          aria-label="搜索当前智能体的会话"
-        />
-      </div>
-
       {/* 分区标题：给列表一个开头，并说明搜索的范围就是这一组会话。 */}
       <div className="opshelper-side-label">
         <span>会话</span>
-        {!loading && visibleCount > 0 ? <span className="opshelper-side-count">{visibleCount}</span> : null}
+        <span className="opshelper-side-tools">
+          {!loading && visibleCount > 0 ? <span className="opshelper-side-count">{visibleCount}</span> : null}
+          <button
+            className="opshelper-search-toggle"
+            type="button"
+            aria-label={searchOpen ? "关闭搜索" : "搜索会话"}
+            aria-expanded={searchOpen}
+            aria-controls={searchFieldId}
+            title={searchOpen ? "关闭搜索" : "搜索会话"}
+            onClick={toggleSearch}
+          >
+            <IconSearch />
+          </button>
+        </span>
       </div>
+
+      {searchOpen ? (
+        <div className="opshelper-search" id={searchFieldId}>
+          <IconSearch />
+          <input
+            ref={searchInputRef}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setSearch("");
+                setSearchOpen(false);
+              }
+            }}
+            placeholder="搜索会话"
+            aria-label="搜索当前智能体的会话"
+          />
+        </div>
+      ) : null}
 
       <nav className="opshelper-nav" aria-label="当前智能体的会话和用户功能">
         <div className="opshelper-current-conversations" id={conversationListId} ref={conversationListRef}>
@@ -673,19 +760,6 @@ function WorkspaceSidebar({ user }: { user: WorkspaceUser }) {
         {executionBlockedReason ? <div className="opshelper-sidebar-notice">{executionBlockedReason}</div> : null}
       </nav>
 
-      <div className="opshelper-userbar">
-        <span className="opshelper-user-avatar">{Array.from(user.name.trim() || user.username)[0]?.toUpperCase()}</span>
-        <Link
-          className={`opshelper-user-name${pathname.endsWith("/user") ? " active" : ""}`}
-          href="/user"
-          aria-current={pathname.endsWith("/user") ? "page" : undefined}
-          title="个人设置"
-        >
-          {user.name}
-        </Link>
-        {user.role === "admin" ? <Link className="opshelper-admin-link" href="/admin">管理</Link> : null}
-        <button className="opshelper-logout" onClick={() => void logout().then(() => { window.location.href = "/gateway/login"; })}>退出</button>
-      </div>
     </aside>
   );
 }

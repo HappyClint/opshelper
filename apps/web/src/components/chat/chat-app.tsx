@@ -20,9 +20,9 @@ import {
   replyExecutionPermission,
   replyExecutionQuestion,
 } from "@/lib/browser-api";
-import { useWorkspace, WorkspaceMenuButton } from "../workspace-shell";
+import { AgentSwitcher, useWorkspace, WorkspaceMenuButton, WorkspaceUserMenu } from "../workspace-shell";
 import { uploadFile, type FileInfo } from "../file-manager/utils";
-import { AgentMark, type Assistant } from "./assistant";
+import { starterExamplesFor, type Assistant } from "./assistant";
 import { AttachmentPanel } from "./attachment-panel";
 import { CollaborationBar } from "./collaboration-bar";
 import { Composer } from "./composer";
@@ -148,6 +148,8 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
     loading,
     executionBlockedReason,
     showAttachments,
+    chatTheme,
+    setChatTheme,
     newConversationRequest,
     acknowledgeNewConversationRequest,
     refreshHome,
@@ -713,6 +715,9 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
   );
   const blocked = navigating || !draftsReady || conversationSurface === "loading" || conversationSurface === "unavailable" ||
     Boolean(visibleSnapshot?.conversation.recoveryRequired);
+  // 空会话时输入框留在内容中部（预览稿的形态）；提问后回到页面底部。
+  const showCenteredComposer = conversationSurface === "new" && displayedMessages.length === 0 &&
+    !sending && !hasActiveExecution;
 
   const createScheduleDraft = useCallback(() => {
     if (!activeAssistant || (!input.trim() && readyAttachments.length === 0)) return;
@@ -763,12 +768,28 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
       <main className="opshelper-main">
         <header className="opshelper-topbar">
           <WorkspaceMenuButton />
-          <AgentMark id={activeAssistant.id} name={activeAssistant.name} description={activeAssistant.description} />
+          <AgentSwitcher />
           <div className="opshelper-topbar-meta">
-            <div className="opshelper-topbar-title">{visibleSnapshot?.conversation.title || activeAssistant.name}</div>
-            <div className="opshelper-topbar-sub">
-              {visibleSnapshot ? activeAssistant.name : activeAssistant.description}
-            </div>
+            <div className="opshelper-topbar-title">{visibleSnapshot?.conversation.title || "新会话"}</div>
+            <div className="opshelper-topbar-sub">{activeAssistant.description}</div>
+          </div>
+          <div className="opshelper-theme-switch" role="group" aria-label="配色主题">
+            <button
+              type="button"
+              aria-pressed={chatTheme === "pine"}
+              title="松绿配色"
+              onClick={() => setChatTheme("pine")}
+            >
+              松绿
+            </button>
+            <button
+              type="button"
+              aria-pressed={chatTheme === "mist"}
+              title="雾蓝配色"
+              onClick={() => setChatTheme("mist")}
+            >
+              雾蓝
+            </button>
           </div>
           <button
             className={`opshelper-topbar-toggle${showAttachments ? " active" : ""}`}
@@ -780,15 +801,15 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
           >
             <IconSidePanel />
           </button>
+          <WorkspaceUserMenu />
         </header>
-        <div className="opshelper-stage">
+        <div className={`opshelper-stage${showCenteredComposer ? " opshelper-stage-new" : ""}`}>
           <Conversation
             messages={displayedMessages}
             surface={conversationSurface}
             assistant={activeAssistant}
             busy={sending || hasActiveExecution || forkingMessageId !== null}
             sessionId={activeConversationId}
-            onPick={pickStarter}
             onRestartFrom={restartFrom}
             forkingMessageId={forkingMessageId}
             executions={visibleSnapshot?.executions ?? []}
@@ -889,6 +910,21 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
             onMention={mention}
             onSchedule={createScheduleDraft}
           />
+          {showCenteredComposer ? (
+            <div className="opshelper-starter-row" aria-label="问题示例">
+              {starterExamplesFor(activeAssistant).map((example) => (
+                <button
+                  key={example.text}
+                  type="button"
+                  className="opshelper-starter-pill"
+                  title={example.text}
+                  onClick={() => pickStarter(example.text)}
+                >
+                  {example.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </main>
 

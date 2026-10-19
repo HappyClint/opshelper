@@ -14,7 +14,6 @@ import {
   type RefObject,
 } from "react";
 
-import { logout } from "@/lib/browser-api";
 import {
   BrandLogo,
   IconAgent,
@@ -23,6 +22,7 @@ import {
   IconMenu,
   IconUsers,
 } from "./chat/icons";
+import { UserMenu } from "./user-menu";
 
 // 与 chat.css 里侧栏改为抽屉的断点保持一致。
 const DRAWER_MEDIA_QUERY = "(max-width: 640px)";
@@ -65,6 +65,7 @@ const ADMIN_NAV: AdminNavItem[] = [
 ];
 
 interface AdminShellContextValue {
+  user: AdminUser;
   showSidebar: boolean;
   openSidebar: () => void;
   closeSidebar: () => void;
@@ -93,10 +94,21 @@ export function AdminShell({
   const pathname = usePathname();
   const [showSidebar, setShowSidebar] = useState(false);
   const [isDrawer, setIsDrawer] = useState(false);
+  const [theme, setTheme] = useState<"pine" | "mist">("pine");
   const sidebarRef = useRef<HTMLElement>(null);
   const mainRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
+
+  // 管理与工作台共用同一个主题选择；从聊天切到管理台时读取本地保存的值。
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("opshelper:chat-theme");
+      if (saved === "mist") setTheme("mist");
+    } catch {
+      // Browser storage may be unavailable.
+    }
+  }, []);
 
   // 抽屉只在窄屏成立：宽屏下侧栏常驻，不需要焦点管理。
   useEffect(() => {
@@ -147,17 +159,18 @@ export function AdminShell({
 
   const contextValue = useMemo<AdminShellContextValue>(
     () => ({
+      user,
       showSidebar,
       openSidebar: () => setShowSidebar(true),
       closeSidebar,
       menuButtonRef,
     }),
-    [closeSidebar, showSidebar],
+    [closeSidebar, showSidebar, user],
   );
 
   return (
     <AdminShellContext.Provider value={contextValue}>
-      <div className={`opshelper-shell opshelper-console-shell${showSidebar ? " opshelper-sidebar-open" : ""}`}>
+      <div className={`opshelper-shell opshelper-chat-shell opshelper-console-shell${showSidebar ? " opshelper-sidebar-open" : ""}`} data-chat-theme={theme}>
         <aside
           ref={sidebarRef}
           className="opshelper-sidebar"
@@ -168,7 +181,6 @@ export function AdminShell({
         >
           <div className="opshelper-brand">
             <BrandLogo />
-            <span className="opshelper-brand-name">小信运维助手</span>
           </div>
 
           <nav className="opshelper-nav" aria-label="管理控制台">
@@ -210,20 +222,6 @@ export function AdminShell({
             </div>
           </nav>
 
-          <div className="opshelper-userbar">
-            <span className="opshelper-user-avatar">
-              {Array.from(user.name.trim() || user.username)[0]?.toUpperCase()}
-            </span>
-            <Link className="opshelper-user-name" href="/admin/account" title="账户设置">
-              {user.name}
-            </Link>
-            <button
-              className="opshelper-logout"
-              onClick={() => void logout().then(() => { window.location.href = "/gateway/login"; })}
-            >
-              退出
-            </button>
-          </div>
         </aside>
 
         <button
@@ -263,6 +261,11 @@ export function AdminMenuButton() {
   );
 }
 
+export function AdminUserMenu() {
+  const { user } = useAdminShell();
+  return <UserMenu user={user} context="admin" />;
+}
+
 // 页面统一结构：区域顶栏（图标 + 标题 + 说明）加一整块可滚动画布。
 export function AdminPage({
   title,
@@ -284,6 +287,7 @@ export function AdminPage({
           <h1 className="opshelper-topbar-title">{title}</h1>
           <div className="opshelper-topbar-sub">{subtitle}</div>
         </div>
+        <AdminUserMenu />
       </header>
       <div className="opshelper-page-body">
         {children}

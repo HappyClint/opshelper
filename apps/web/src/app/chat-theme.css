@@ -1,0 +1,770 @@
+/* 聊天工作区 v3 视觉层。
+   只在 .opshelper-chat-shell（聊天路由）内生效；定时任务、文件、管理页保持原样式。
+   令牌沿用 DESIGN.md 的 --g-* 命名：松绿是默认，data-chat-theme="mist" 是雾蓝对照。 */
+
+.opshelper-chat-shell {
+  --g-bg: #ffffff;
+  --g-canvas: #ffffff;
+  --g-text: #1c2723;
+  --g-muted: #59665f;
+  --g-faint: #65726b;
+  --g-line: #e7e9e3;
+  --g-line-strong: #d7dad2;
+  --g-line-soft: #eff1ec;
+  --g-field: #f4f5f1;
+  --g-hover: #f0f2ed;
+  --g-icon: #7d8982;
+  --g-side-bg: #f3f5f1;
+  --g-dock: #fafbf8;
+  --g-code-bg: #f5f7f3;
+  --g-code-ink: #223029;
+  --g-code-line: #e0e4dc;
+  --g-surface: #f5f7f2;
+  --g-scroll: #c7d1ca;
+  --g-warn: #8a5b00;
+  --g-warn-soft: #fdf2dd;
+  --g-warn-line: #efd8ae;
+  --g-accent: #2f6f5b;
+  --g-accent-dark: #245a49;
+  --g-accent-soft: #eaf3ee;
+  --g-accent-soft2: #e3f0e9;
+  --g-accent-line: #c9e0d6;
+  --g-accent-soft-hover: #dcece4;
+  --g-read-w: 680px;
+  --g-radius: 8px;
+  --g-radius-card: 12px;
+}
+
+.opshelper-chat-shell[data-chat-theme="mist"] {
+  --g-text: #1b2634;
+  --g-muted: #58667a;
+  --g-faint: #657286;
+  --g-line: #e9edf4;
+  --g-line-strong: #d9e1ec;
+  --g-line-soft: #f0f3f8;
+  --g-field: #f4f6fa;
+  --g-hover: #f2f5fa;
+  --g-icon: #7b8799;
+  --g-side-bg: #f7f9fc;
+  --g-dock: #f9fbfd;
+  --g-code-bg: #f6f8fb;
+  --g-code-ink: #223044;
+  --g-code-line: #e3e9f2;
+  --g-surface: #f7f9fc;
+  --g-scroll: #c9d2e0;
+  --g-accent: #5676b7;
+  --g-accent-dark: #425f98;
+  --g-accent-soft: #edf2fb;
+  --g-accent-soft2: #eaf0fa;
+  --g-accent-line: #d3dff2;
+  --g-accent-soft-hover: #e2eafa;
+}
+
+/* ---------- 侧栏 ---------- */
+.opshelper-chat-shell .opshelper-sidebar {
+  background: var(--g-side-bg);
+  border-right: 1px solid var(--g-line);
+  padding: 18px 12px 12px;
+}
+.opshelper-chat-shell .opshelper-brand {
+  margin-bottom: 18px;
+  padding: 0 8px;
+}
+.opshelper-chat-shell .opshelper-brand-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.opshelper-brand-wordmark {
+  display: block;
+  width: 61px;
+  height: 32px;
+  flex: 0 0 auto;
+  background: var(--g-accent);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.opshelper-chat-shell .opshelper-chat-side-label {
+  margin: 0 0 6px;
+  padding: 0 10px;
+  color: var(--g-faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  line-height: 1.6;
+}
+.opshelper-chat-shell .opshelper-side-group {
+  gap: 2px;
+  margin-bottom: 20px;
+}
+.opshelper-chat-shell .opshelper-agent-selector-button {
+  background: var(--g-bg);
+  border-color: var(--g-line);
+  border-radius: 8px;
+}
+.opshelper-chat-shell .opshelper-agent-selector-button:hover,
+.opshelper-chat-shell .opshelper-agent-selector-button[aria-expanded="true"] {
+  border-color: var(--g-accent-line);
+  background: var(--g-accent-soft);
+}
+.opshelper-chat-shell .opshelper-new-conversation {
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--g-muted);
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+.opshelper-chat-shell .opshelper-new-conversation:hover {
+  background: var(--g-hover);
+  color: var(--g-text);
+}
+.opshelper-chat-shell .opshelper-new-conversation .opshelper-icon {
+  color: var(--g-icon);
+}
+.opshelper-chat-shell .opshelper-new-conversation.active {
+  background: var(--g-accent-soft);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-new-conversation.active .opshelper-icon {
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-new-conversation:disabled {
+  background: transparent;
+  color: var(--g-faint);
+  box-shadow: none;
+}
+.opshelper-chat-shell .opshelper-shortcuts {
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+.opshelper-chat-shell .opshelper-shortcut {
+  justify-content: flex-start;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 400;
+}
+.opshelper-chat-shell .opshelper-shortcut.active::before {
+  display: none;
+}
+.opshelper-chat-shell .opshelper-search input {
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+}
+.opshelper-chat-shell .opshelper-search input:hover {
+  background: var(--g-hover);
+}
+.opshelper-chat-shell .opshelper-search input:focus {
+  background: var(--g-bg);
+}
+.opshelper-chat-shell .opshelper-side-label {
+  color: var(--g-faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+.opshelper-chat-shell .opshelper-side-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.opshelper-chat-shell .opshelper-side-tools .opshelper-side-count {
+  margin-left: 0;
+}
+.opshelper-chat-shell .opshelper-search-toggle {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--g-icon);
+  cursor: pointer;
+}
+.opshelper-chat-shell .opshelper-search-toggle:hover {
+  background: var(--g-field);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-search-toggle[aria-expanded="true"] {
+  background: var(--g-accent-soft);
+  color: var(--g-accent);
+}
+.opshelper-chat-shell .opshelper-search-toggle .opshelper-search-icon {
+  position: static;
+  left: auto;
+  width: 15px;
+  height: 15px;
+}
+.opshelper-chat-shell .opshelper-conv {
+  border-radius: 8px;
+}
+.opshelper-chat-shell .opshelper-conv.active::before {
+  display: none;
+}
+.opshelper-chat-shell .opshelper-conv-main {
+  min-height: 40px;
+}
+.opshelper-chat-shell .opshelper-conv-label {
+  font-size: 13px;
+}
+.opshelper-chat-shell .opshelper-conv-time {
+  font-size: 11.5px;
+}
+.opshelper-chat-shell .opshelper-userbar {
+  border-top-color: var(--g-line);
+}
+
+/* ---------- 顶栏 ---------- */
+.opshelper-chat-shell .opshelper-topbar {
+  height: 58px;
+  padding: 0 24px;
+  gap: 10px;
+}
+.opshelper-chat-shell .opshelper-agent-switcher {
+  position: relative;
+  flex: 0 0 auto;
+}
+.opshelper-chat-shell .opshelper-topbar-agent-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  height: 36px;
+  padding: 0 8px 0 4px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--g-text);
+  font: inherit;
+  cursor: pointer;
+}
+.opshelper-chat-shell .opshelper-topbar-agent-button:hover {
+  background: var(--g-field);
+}
+.opshelper-chat-shell .opshelper-topbar-agent-button[aria-expanded="true"] {
+  border-color: var(--g-accent-line);
+  background: var(--g-accent-soft);
+}
+.opshelper-chat-shell .opshelper-topbar-agent-button:disabled {
+  cursor: default;
+  opacity: .7;
+}
+.opshelper-chat-shell .opshelper-topbar-agent-button .opshelper-agent-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+.opshelper-chat-shell .opshelper-topbar-agent-button .opshelper-agent-mark .opshelper-icon {
+  width: 16px;
+  height: 16px;
+}
+.opshelper-chat-shell .opshelper-topbar-agent-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.opshelper-chat-shell .opshelper-topbar-agent-button > .opshelper-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--g-faint);
+}
+.opshelper-chat-shell .opshelper-topbar-agent-menu {
+  left: 0;
+  right: auto;
+  z-index: 60;
+  min-width: 300px;
+  width: max-content;
+  max-width: 380px;
+}
+.opshelper-chat-shell .opshelper-topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+.opshelper-chat-shell .opshelper-topbar-sub {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--g-faint);
+}
+.opshelper-chat-shell .opshelper-topbar-toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  color: var(--g-icon);
+}
+.opshelper-chat-shell .opshelper-topbar-toggle:hover {
+  background: var(--g-field);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-topbar-toggle.active {
+  background: var(--g-accent-soft);
+  color: var(--g-accent);
+}
+
+/* 桌面端的主题选择：两段式，不用下拉，切换成本低。 */
+.opshelper-chat-shell .opshelper-theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--g-field);
+}
+.opshelper-chat-shell .opshelper-theme-switch button {
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--g-muted);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.opshelper-chat-shell .opshelper-theme-switch button:hover {
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-theme-switch button[aria-pressed="true"] {
+  background: var(--g-bg);
+  color: var(--g-accent-dark);
+  box-shadow: 0 1px 2px rgba(30, 42, 58, .08);
+}
+
+/* ---------- 会话与空状态 ---------- */
+.opshelper-chat-shell .opshelper-conversation {
+  padding: 30px 28px 24px;
+  gap: 26px;
+}
+.opshelper-chat-shell .opshelper-empty {
+  margin: auto;
+  max-width: 680px;
+}
+/* 空会话：空状态和输入框作为一组居中；发送后通过移除 .opshelper-stage-new 回到页面底部。 */
+.opshelper-chat-shell .opshelper-stage.opshelper-stage-new {
+  justify-content: center;
+}
+.opshelper-chat-shell .opshelper-stage.opshelper-stage-new .opshelper-conversation {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding-bottom: 0;
+}
+.opshelper-chat-shell .opshelper-stage.opshelper-stage-new .opshelper-empty {
+  margin: 0 auto 24px;
+}
+.opshelper-chat-shell .opshelper-stage.opshelper-stage-new .opshelper-composer {
+  border-top: 0;
+  background: transparent;
+  padding-top: 0;
+}
+.opshelper-chat-shell .opshelper-starter-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--g-read-w);
+  margin: 10px auto 0;
+  padding: 0 28px;
+}
+.opshelper-chat-shell .opshelper-starter-pill {
+  padding: 8px 14px;
+  border: 1px solid var(--g-line);
+  border-radius: 999px;
+  background: var(--g-bg);
+  color: var(--g-muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s;
+}
+.opshelper-chat-shell .opshelper-starter-pill:hover {
+  border-color: var(--g-accent-line);
+  background: var(--g-accent-soft);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-empty > .opshelper-agent-mark {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  margin-bottom: 18px;
+}
+.opshelper-chat-shell .opshelper-empty > .opshelper-agent-mark .opshelper-icon {
+  width: 26px;
+  height: 26px;
+}
+.opshelper-chat-shell .opshelper-empty-title {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -.02em;
+}
+.opshelper-chat-shell .opshelper-empty-hint {
+  max-width: 38em;
+  margin: 12px 0 14px;
+  color: var(--g-muted);
+  font-size: 14.5px;
+  line-height: 1.8;
+}
+.opshelper-chat-shell .opshelper-empty-cards-label {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 0 6px;
+  color: var(--g-faint);
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: .02em;
+  text-align: center;
+}
+.opshelper-chat-shell .opshelper-empty-cards {
+  max-width: 400px;
+  gap: 6px;
+}
+.opshelper-chat-shell .opshelper-empty-card {
+  padding: 10px 14px;
+  border: 1px solid var(--g-line);
+  border-radius: 10px;
+  background: var(--g-bg);
+  font-size: 13.5px;
+  box-shadow: none;
+}
+.opshelper-chat-shell .opshelper-empty-card:hover:not(:disabled) {
+  border-color: var(--g-accent-line);
+  background: var(--g-accent-soft);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-empty-card::after {
+  color: var(--g-icon);
+}
+
+/* ---------- 消息 ---------- */
+.opshelper-chat-shell .opshelper-msg {
+  max-width: var(--g-read-w);
+}
+.opshelper-chat-shell .opshelper-msg-user .opshelper-bubble {
+  max-width: 74%;
+  padding: 10px 14px;
+  border: 1px solid var(--g-line);
+  border-radius: 16px 16px 5px 16px;
+  background: var(--g-field);
+  font-size: 15.5px;
+  line-height: 1.75;
+}
+.opshelper-chat-shell .opshelper-msg-assistant {
+  gap: 14px;
+}
+.opshelper-chat-shell .opshelper-msg-assistant > .opshelper-agent-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  margin-top: 2px;
+}
+.opshelper-chat-shell .opshelper-msg-assistant > .opshelper-agent-mark .opshelper-icon {
+  width: 18px;
+  height: 18px;
+}
+.opshelper-chat-shell .opshelper-assistant-body {
+  gap: 14px;
+}
+.opshelper-chat-shell .opshelper-markdown {
+  font-size: 16px;
+  line-height: 1.8;
+}
+.opshelper-chat-shell .opshelper-markdown p {
+  margin: 14px 0;
+}
+.opshelper-chat-shell .opshelper-markdown h1,
+.opshelper-chat-shell .opshelper-markdown h2,
+.opshelper-chat-shell .opshelper-markdown h3 {
+  margin: 28px 0 10px;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+}
+.opshelper-chat-shell .opshelper-markdown h1 { font-size: 25px; }
+.opshelper-chat-shell .opshelper-markdown h2 { font-size: 21px; }
+.opshelper-chat-shell .opshelper-markdown h3 { font-size: 18px; }
+.opshelper-chat-shell .opshelper-markdown li { margin: 8px 0; }
+.opshelper-chat-shell .opshelper-markdown strong { color: var(--g-text); }
+.opshelper-chat-shell .opshelper-markdown pre {
+  padding: 13px 15px;
+  border: 1px solid var(--g-code-line);
+  border-radius: 10px;
+  background: var(--g-code-bg);
+  color: var(--g-code-ink);
+  box-shadow: none;
+  font-size: 13.5px;
+  line-height: 1.75;
+  tab-size: 2;
+}
+.opshelper-chat-shell .opshelper-markdown pre code {
+  background: transparent;
+  color: inherit;
+}
+.opshelper-chat-shell .opshelper-markdown code {
+  background: var(--g-accent-soft2);
+  color: var(--g-accent-dark);
+  font-size: 13.5px;
+}
+.opshelper-chat-shell .opshelper-markdown table {
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+.opshelper-chat-shell .opshelper-markdown th {
+  background: var(--g-surface);
+  font-weight: 600;
+  color: var(--g-text);
+}
+.opshelper-chat-shell .opshelper-markdown th,
+.opshelper-chat-shell .opshelper-markdown td {
+  border-color: var(--g-line);
+  padding: 9px 12px;
+}
+.opshelper-chat-shell .opshelper-markdown tr:nth-child(even) td {
+  background: transparent;
+}
+
+/* ---------- 操作记录 / 授权 / 提示 ---------- */
+.opshelper-chat-shell .opshelper-operations {
+  background: var(--g-surface);
+  border-color: var(--g-line);
+}
+.opshelper-chat-shell .opshelper-operations.running,
+.opshelper-chat-shell .opshelper-operations.failed {
+  background: var(--g-surface);
+  border-color: var(--g-line);
+}
+.opshelper-chat-shell .opshelper-operations-icon {
+  border: 1px solid var(--g-line);
+  background: var(--g-bg);
+  color: var(--g-muted);
+}
+.opshelper-chat-shell .opshelper-operations.running .opshelper-operations-icon {
+  border-color: var(--g-warn-line);
+  background: var(--g-warn-soft);
+  color: var(--g-warn);
+}
+.opshelper-chat-shell .opshelper-operations.failed .opshelper-operations-icon {
+  border-color: color-mix(in srgb, var(--g-danger) 24%, var(--g-bg));
+  background: var(--g-danger-soft);
+  color: var(--g-danger);
+}
+.opshelper-chat-shell .opshelper-operation-chip.notice {
+  border-color: var(--g-warn-line);
+  background: var(--g-warn-soft);
+  color: var(--g-warn);
+}
+.opshelper-chat-shell .opshelper-operation-status.running,
+.opshelper-chat-shell .opshelper-operation-status.pending {
+  background: var(--g-warn-soft);
+  color: var(--g-warn);
+}
+.opshelper-chat-shell .opshelper-operation-status.failed {
+  background: var(--g-danger-soft);
+  color: var(--g-danger);
+}
+.opshelper-chat-shell .opshelper-operation-status.completed {
+  background: var(--g-accent-soft2);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-operation-target {
+  background: var(--g-field);
+  color: var(--g-text);
+}
+.opshelper-chat-shell .opshelper-permission {
+  border-color: var(--g-line-strong);
+  background: var(--g-bg);
+  box-shadow: none;
+}
+.opshelper-chat-shell .opshelper-permission-head .opshelper-icon {
+  color: var(--g-warn);
+}
+.opshelper-chat-shell .opshelper-permission-tag {
+  border: 1px solid var(--g-warn-line);
+  background: var(--g-warn-soft);
+  color: var(--g-warn);
+}
+.opshelper-chat-shell .opshelper-permission-impact {
+  color: var(--g-muted);
+}
+.opshelper-chat-shell .opshelper-permission-detail {
+  border-color: var(--g-line);
+  background: var(--g-surface);
+}
+.opshelper-chat-shell .opshelper-perm-btn.danger {
+  border-color: color-mix(in srgb, var(--g-danger) 24%, var(--g-bg));
+  color: var(--g-danger);
+}
+.opshelper-chat-shell .opshelper-perm-btn.danger:hover {
+  background: var(--g-danger-soft);
+}
+.opshelper-chat-shell .opshelper-question {
+  border-color: var(--g-line-strong);
+  background: var(--g-bg);
+}
+.opshelper-chat-shell .opshelper-notice {
+  background: var(--g-surface);
+  border-color: var(--g-line);
+  color: var(--g-muted);
+}
+
+/* ---------- 输入区 ---------- */
+.opshelper-chat-shell .opshelper-composer {
+  padding: 12px 28px 16px;
+  gap: 8px;
+  border-top: 1px solid var(--g-line);
+  background: var(--g-dock);
+}
+.opshelper-chat-shell .opshelper-composer-row {
+  max-width: var(--g-read-w);
+  padding: 14px 14px 10px 16px;
+  border: 1px solid var(--g-line-strong);
+  border-radius: 16px;
+  background: var(--g-bg);
+  box-shadow: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.opshelper-chat-shell .opshelper-composer-row:hover {
+  border-color: var(--g-accent-line);
+}
+.opshelper-chat-shell .opshelper-composer-row:focus-within {
+  border-color: var(--g-accent-line);
+  box-shadow: 0 0 0 3px var(--g-accent-soft);
+}
+.opshelper-chat-shell .opshelper-composer textarea {
+  font-size: 15.5px;
+  line-height: 1.7;
+}
+.opshelper-chat-shell .opshelper-composer textarea::placeholder {
+  color: var(--g-faint);
+}
+.opshelper-chat-shell .opshelper-composer-tools {
+  gap: 6px;
+}
+.opshelper-chat-shell .opshelper-model-pick {
+  position: relative;
+}
+.opshelper-chat-shell .opshelper-model-pick select {
+  max-width: 220px;
+  height: 30px;
+  padding: 0 26px 0 9px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--g-muted);
+  font-family: var(--g-mono);
+  font-size: 11.5px;
+  letter-spacing: .01em;
+}
+.opshelper-chat-shell .opshelper-model-pick select:hover {
+  border-color: var(--g-line);
+  background: var(--g-field);
+}
+.opshelper-chat-shell .opshelper-model-pick::after {
+  content: "";
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--g-faint);
+  border-bottom: 1.5px solid var(--g-faint);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+.opshelper-chat-shell .opshelper-auto-approve {
+  height: 30px;
+  padding: 0 8px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--g-muted);
+  font-size: 12.5px;
+}
+.opshelper-chat-shell .opshelper-auto-approve:hover {
+  border-color: var(--g-line);
+  background: var(--g-field);
+}
+.opshelper-chat-shell .opshelper-auto-approve.active {
+  border-color: var(--g-accent-line);
+  background: var(--g-accent-soft);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-auto-approve input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--g-accent);
+}
+.opshelper-chat-shell .opshelper-attach-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--g-faint);
+}
+.opshelper-chat-shell .opshelper-attach-btn:hover {
+  background: var(--g-field);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-schedule-btn {
+  min-height: 32px;
+  color: var(--g-muted);
+  font-size: 12.5px;
+}
+.opshelper-chat-shell .opshelper-schedule-btn:hover {
+  background: var(--g-field);
+  color: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-send {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--g-accent);
+}
+.opshelper-chat-shell .opshelper-send:hover:not(:disabled) {
+  background: var(--g-accent-dark);
+}
+.opshelper-chat-shell .opshelper-send:disabled {
+  background: var(--g-field);
+  color: var(--g-icon);
+}
+.opshelper-chat-shell .opshelper-stop {
+  width: auto;
+  background: var(--g-danger);
+}
+.opshelper-chat-shell .opshelper-composer-keyboard-hint {
+  color: var(--g-faint);
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .opshelper-chat-shell .opshelper-theme-switch {
+    display: none;
+  }
+  .opshelper-chat-shell .opshelper-topbar-agent-name {
+    display: none;
+  }
+  .opshelper-chat-shell .opshelper-topbar-agent-button {
+    padding-right: 4px;
+  }
+}

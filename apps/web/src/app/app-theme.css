@@ -1,0 +1,538 @@
+/* 全站 v3 视觉层（工作台 + 管理台 + 登录）。
+   chat-theme.css 负责聊天工作区的令牌与聊天组件；这里把同一套松绿/雾蓝令牌
+   延伸到定时任务、文件、管理控制台、个人设置和登录页，避免出现第二套旧后台皮肤。
+   只改视觉，不改任何业务布局与交互。 */
+
+/* ---------- 共用页头与页面画布 ---------- */
+.opshelper-chat-shell .opshelper-page-topbar {
+  height: 58px;
+  padding: 0 24px;
+  gap: 12px;
+}
+.opshelper-chat-shell .opshelper-page-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--g-field);
+  color: var(--g-accent);
+}
+.opshelper-chat-shell .opshelper-page-icon .opshelper-icon {
+  width: 17px;
+  height: 17px;
+}
+.opshelper-chat-shell .opshelper-page-topbar .opshelper-topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+.opshelper-chat-shell .opshelper-page-topbar .opshelper-topbar-sub {
+  font-size: 12.5px;
+  color: var(--g-muted);
+}
+.opshelper-chat-shell .opshelper-workspace-main {
+  background: var(--g-bg);
+}
+.opshelper-chat-shell .opshelper-page-body {
+  --radius: 12px;
+  --radius-sm: 8px;
+  background: var(--g-bg);
+  padding: 18px clamp(16px, 2vw, 24px) 28px;
+  font-size: 14px;
+}
+
+/* ---------- 管理台侧栏：与工作台同为单行导航 ---------- */
+.opshelper-console-shell .opshelper-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0;
+}
+.opshelper-console-shell .opshelper-console-group,
+.opshelper-console-shell .opshelper-lib {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.opshelper-console-shell .opshelper-console-label {
+  padding: 0 10px 6px;
+  color: var(--g-faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .06em;
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant {
+  gap: 9px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--g-muted);
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant:hover {
+  background: var(--g-hover);
+  color: var(--g-text);
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant.active-page {
+  background: var(--g-accent-soft);
+  color: var(--g-accent-dark);
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant.active-page::before {
+  display: none;
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant-text {
+  gap: 0;
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant-name {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant-desc {
+  display: none;
+}
+.opshelper-console-shell .opshelper-nav .opshelper-lib-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--g-icon);
+}
+.opshelper-console-shell .opshelper-nav .opshelper-lib-icon .opshelper-icon {
+  width: 17px;
+  height: 17px;
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant:hover .opshelper-lib-icon {
+  background: transparent;
+  color: var(--g-text);
+}
+.opshelper-console-shell .opshelper-nav .opshelper-assistant.active-page .opshelper-lib-icon {
+  background: transparent;
+  color: var(--g-accent);
+}
+
+/* ---------- 管理页通用卡片、按钮、表单 ---------- */
+.opshelper-chat-shell .opshelper-page-body .panel {
+  border: 1px solid var(--g-line);
+  border-radius: 12px;
+  box-shadow: none;
+}
+.opshelper-chat-shell .opshelper-page-body .panel-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.opshelper-chat-shell .opshelper-page-body .panel-header {
+  margin-bottom: 16px;
+}
+.opshelper-chat-shell .opshelper-page-body .muted {
+  font-size: 12.5px;
+}
+.opshelper-chat-shell .opshelper-page-body .button,
+.opshelper-chat-shell .opshelper-page-body .button-secondary,
+.opshelper-chat-shell .opshelper-page-body .button-danger {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: none;
+}
+.opshelper-chat-shell .opshelper-page-body .button-secondary {
+  background: transparent;
+  border: 1px solid var(--g-line-strong);
+}
+.opshelper-chat-shell .opshelper-page-body .button-secondary:hover {
+  background: var(--g-field);
+}
+.opshelper-chat-shell .opshelper-page-body .field-input {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--g-field);
+  font-size: 13.5px;
+}
+.opshelper-chat-shell .opshelper-page-body .field-input:focus {
+  border-color: var(--g-accent-line);
+  background: var(--g-bg);
+  box-shadow: 0 0 0 3px var(--g-accent-soft);
+}
+.opshelper-chat-shell .opshelper-page-body .field-label {
+  color: var(--g-muted);
+  font-size: 12.5px;
+}
+.opshelper-chat-shell .opshelper-page-body .um-list-section {
+  border: 1px solid var(--g-line);
+  border-radius: 12px;
+  background: var(--g-bg);
+  box-shadow: none;
+}
+.opshelper-chat-shell .opshelper-page-body .um-detail-placeholder {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.opshelper-chat-shell .opshelper-page-body .um-detail-placeholder-icon {
+  color: var(--g-icon);
+}
+.opshelper-chat-shell .opshelper-page-body .um-layout {
+  gap: 14px;
+}
+.opshelper-chat-shell .opshelper-page-body .um-table {
+  border-color: var(--g-line);
+}
+.opshelper-chat-shell .opshelper-page-body .um-table-head {
+  background: var(--g-field);
+  color: var(--g-muted);
+}
+.opshelper-chat-shell .opshelper-page-body .um-table-row:hover {
+  background: var(--g-hover);
+}
+.opshelper-chat-shell .opshelper-settings-stack {
+  gap: 14px;
+}
+
+/* ---------- 定时任务 ---------- */
+.opshelper-chat-shell .schedule-page {
+  flex: 1;
+  min-height: 0;
+  padding: 18px clamp(16px, 2vw, 24px) 24px;
+  background: var(--g-bg);
+  gap: 0;
+}
+.opshelper-chat-shell .schedule-surface {
+  border: 0;
+  border-radius: 0;
+  background: var(--g-bg);
+  box-shadow: none;
+}
+.opshelper-chat-shell .schedule-surface-head {
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--g-line);
+}
+.opshelper-chat-shell .schedule-surface-title h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.opshelper-chat-shell .schedule-surface-count {
+  font-size: 12.5px;
+  color: var(--g-muted);
+}
+.opshelper-chat-shell .schedule-onboarding {
+  padding: 48px 20px;
+}
+.opshelper-chat-shell .schedule-onboarding-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--g-field);
+  color: var(--g-accent);
+}
+.opshelper-chat-shell .schedule-onboarding h2 {
+  margin: 4px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.opshelper-chat-shell .schedule-onboarding p {
+  max-width: 420px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--g-muted);
+}
+.opshelper-chat-shell .schedule-page .button,
+.opshelper-chat-shell .schedule-page .button-secondary,
+.opshelper-chat-shell .schedule-page .button-danger {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: none;
+}
+.opshelper-chat-shell .schedule-page .button {
+  background: var(--g-accent);
+}
+.opshelper-chat-shell .schedule-page .button:hover {
+  background: var(--g-accent-dark);
+}
+.opshelper-chat-shell .schedule-page .button-secondary {
+  border: 1px solid var(--g-line-strong);
+  background: transparent;
+  color: var(--g-text);
+}
+.opshelper-chat-shell .schedule-page .button-secondary:hover {
+  background: var(--g-field);
+}
+.opshelper-chat-shell .schedule-panels {
+  background: transparent;
+  padding: 16px 0;
+}
+.opshelper-chat-shell .schedule-panel {
+  border-color: var(--g-line);
+  border-radius: 12px;
+  box-shadow: none;
+}
+.opshelper-chat-shell .schedule-panel:hover {
+  border-color: var(--g-accent-line);
+  box-shadow: none;
+}
+.opshelper-chat-shell .schedule-surface-foot {
+  padding: 12px 0 0;
+  border-top: 1px solid var(--g-line);
+  font-size: 12px;
+}
+
+/* ---------- 我的文件 ---------- */
+.opshelper-chat-shell .user-files-page {
+  padding: 18px clamp(16px, 2vw, 24px) 24px;
+  background: var(--g-bg);
+}
+.opshelper-chat-shell .user-files-content {
+  border: 0;
+  border-radius: 0;
+  background: var(--g-bg);
+  box-shadow: none;
+}
+.opshelper-chat-shell .user-files-page .file-manager-header {
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--g-line);
+}
+.opshelper-chat-shell .user-files-page .file-manager-toolbar .button,
+.opshelper-chat-shell .user-files-page .file-manager-toolbar .button-secondary {
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 8px;
+}
+.opshelper-chat-shell .user-files-page .file-manager-footer {
+  border-top: 1px solid var(--g-line);
+  padding-top: 12px;
+}
+
+/* ---------- 登录 ---------- */
+.opshelper-login-page {
+  background: var(--g-side-bg);
+  color: var(--g-text);
+}
+.opshelper-login-page .login-card .panel {
+  border: 1px solid var(--g-line);
+  border-radius: 16px;
+  background: var(--g-bg);
+  box-shadow: none;
+}
+.opshelper-login-page .login-brand {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 16px;
+}
+.opshelper-login-page .login-brand .opshelper-brand-wordmark {
+  width: 73px;
+  height: 38px;
+}
+.opshelper-login-page .login-header .panel-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+.opshelper-login-page .login-header .muted {
+  font-size: 13px;
+  color: var(--g-muted);
+}
+.opshelper-login-page .login-footer-hint {
+  color: var(--g-faint);
+}
+.opshelper-login-page .button {
+  min-height: 40px;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 13.5px;
+}
+.opshelper-login-page .field-input {
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--g-field);
+  font-size: 13.5px;
+}
+.opshelper-login-page .field-input:focus {
+  border-color: var(--g-accent-line);
+  background: var(--g-bg);
+  box-shadow: 0 0 0 3px var(--g-accent-soft);
+}
+
+@media (max-width: 760px) {
+  .opshelper-chat-shell .opshelper-page-topbar {
+    padding: 0 16px;
+  }
+  .opshelper-chat-shell .opshelper-page-body,
+  .opshelper-chat-shell .schedule-page,
+  .opshelper-chat-shell .user-files-page {
+    padding: 14px 14px 20px;
+  }
+  .opshelper-chat-shell .schedule-surface-head {
+    align-items: flex-start;
+  }
+}
+
+/* ---------- 弹层：与管理页/文件页共用细边框表面 ---------- */
+.opshelper-chat-shell .file-dialog,
+.opshelper-chat-shell .schedule-dialog,
+.opshelper-chat-shell .container-logs-modal {
+  border: 1px solid var(--g-line);
+  border-radius: 14px;
+  background: var(--g-bg);
+  box-shadow: 0 24px 60px rgba(28, 39, 35, .16);
+}
+.opshelper-chat-shell .file-dialog .file-dialog-title,
+.opshelper-chat-shell .schedule-dialog h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.opshelper-chat-shell .file-dialog .file-dialog-actions {
+  gap: 8px;
+}
+.opshelper-chat-shell .file-dialog .button,
+.opshelper-chat-shell .file-dialog .button-secondary,
+.opshelper-chat-shell .file-dialog .button-danger,
+.opshelper-chat-shell .schedule-dialog .button,
+.opshelper-chat-shell .schedule-dialog .button-secondary,
+.opshelper-chat-shell .schedule-dialog .button-danger {
+  min-height: 38px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: none;
+}
+
+/* 登录页把外壳背景也切到暖白；默认只在卡片内换色，页面四周仍会是旧冷灰。 */
+.opshelper-login-page {
+  min-height: 100vh;
+}
+body:has(.opshelper-login-page) {
+  background: var(--g-side-bg);
+}
+
+/* 智能体目录保持原始布局。唯一必要的修正：通用 .field-input 的内边距会覆盖
+   搜索框为放大镜预留的 34px，导致图标被输入框盖住；这里只恢复搜索框的左右内边距，
+   并把图标抬到输入框之上。标题、工具栏和卡片网格全部沿用原布局。 */
+.opshelper-chat-shell .opshelper-page-body .agent-catalog-search .field-input {
+  padding-left: 34px;
+  padding-right: 34px;
+}
+.opshelper-chat-shell .opshelper-page-body .agent-catalog-search > .opshelper-search-icon {
+  z-index: 1;
+}
+
+/* ---------- 顶栏右上角账户入口 ---------- */
+.opshelper-user-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.opshelper-user-menu-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--g-icon);
+  cursor: pointer;
+}
+.opshelper-user-menu-button:hover {
+  background: var(--g-field);
+  color: var(--g-text);
+}
+.opshelper-user-menu-button[aria-expanded="true"] {
+  border-color: var(--g-accent-line);
+  background: var(--g-accent-soft);
+  color: var(--g-accent-dark);
+}
+.opshelper-user-menu-button .opshelper-icon {
+  width: 18px;
+  height: 18px;
+}
+.opshelper-user-menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  width: 228px;
+  padding: 6px;
+  border: 1px solid var(--g-line);
+  border-radius: 10px;
+  background: var(--g-bg);
+  box-shadow: 0 12px 30px rgba(28, 39, 35, .13);
+}
+.opshelper-user-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 8px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--g-line);
+}
+.opshelper-user-menu-avatar {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--g-accent-soft);
+  color: var(--g-accent-dark);
+  font-size: 12px;
+  font-weight: 600;
+}
+.opshelper-user-menu-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.opshelper-user-menu-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.opshelper-user-menu-handle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--g-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.opshelper-user-menu-link,
+.opshelper-user-menu-logout {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--g-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.opshelper-user-menu-link:hover,
+.opshelper-user-menu-logout:hover {
+  background: var(--g-field);
+}
+.opshelper-user-menu-logout {
+  margin-top: 2px;
+  color: var(--g-danger);
+}
+.opshelper-user-menu-logout:hover {
+  background: var(--g-danger-soft);
+}
+
+@media (max-width: 900px) {
+  .opshelper-user-menu-popover {
+    width: 216px;
+  }
+}
