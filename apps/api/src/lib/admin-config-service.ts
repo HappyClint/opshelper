@@ -12,7 +12,7 @@ export const MAX_GLOBAL_INSTRUCTIONS_BYTES = 100 * 1024;
 const CUSTOM_PROVIDER_KEY = "custom";
 const CUSTOM_PROVIDER_NPM = "@ai-sdk/openai-compatible";
 const CUSTOM_PROVIDER_NAME = "自定义模型";
-const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const MODEL_ID_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
 const MAX_MODELS = 100;
 
 type OpencodeConfigJson = Record<string, unknown> & {

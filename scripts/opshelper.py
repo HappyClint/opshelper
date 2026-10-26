@@ -127,6 +127,13 @@ class Deployment:
         self.migrate()
         self.dc('up', '-d', '--no-deps', '--wait', 'api', 'worker', 'web', 'nginx')
 
+    def down(self):
+        self.dc('stop', 'nginx', 'web', 'worker', 'api', 'postgres')
+        runtimes = self.runtimes()
+        running = [c['Id'] for c in runtimes if c['State']['Running']]
+        if running:
+            run(['docker', 'stop', *running])
+
     def verify_bind(self):
         # Detect stale Desktop VM bind mappings before touching the database.
         self.root.mkdir(parents=True, exist_ok=True)
@@ -276,7 +283,9 @@ def main():
     sub = parser.add_subparsers(dest='action', required=True)
     p = sub.add_parser('init'); p.add_argument('--project', default='opshelper'); p.add_argument('--port', type=int, default=8080); p.add_argument('--data-root')
     sub.add_parser('bootstrap', help='仅空数据库：迁移后创建初始管理员')
-    sub.add_parser('up'); sub.add_parser('status')
+    sub.add_parser('up')
+    sub.add_parser('down', aliases=['stop'], help='停止平台与当前部署的用户容器')
+    sub.add_parser('status')
     p = sub.add_parser('backup'); p.add_argument('--output', required=True)
     p = sub.add_parser('restore'); p.add_argument('--backup', required=True)
     args = parser.parse_args()
@@ -286,6 +295,7 @@ def main():
     elif args.action == 'restore': restore(args)
     elif args.action == 'bootstrap': Deployment(args).bootstrap()
     elif args.action == 'up': Deployment(args).up()
+    elif args.action in {'down', 'stop'}: Deployment(args).down()
     else: Deployment(args).dc('ps')
 
 
