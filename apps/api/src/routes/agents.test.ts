@@ -4,9 +4,11 @@ import Fastify from "fastify";
 
 import { AgentServiceError } from "../lib/agent-service";
 import {
+  createOwnedAgentAndAssign,
   registerAgentDeleteRoute,
   registerAgentRoutes,
   type AgentDeleteRouteServices,
+  type UserOwnedAgentCreateServices,
 } from "./agents";
 
 function services(
@@ -115,4 +117,103 @@ test("非管理员不能调用智能体删除服务", async () => {
   } finally {
     await app.close();
   }
+});
+
+function userCreateServices(
+  overrides: Partial<UserOwnedAgentCreateServices> = {},
+): UserOwnedAgentCreateServices {
+  return {
+    previewAgent: async () => ({
+      key: "network",
+      displayName: "Network",
+      description: "desc",
+      mode: "all",
+      contentHash: "hash",
+      model: null,
+      tools: [],
+      skills: [],
+      scripts: [],
+      mcp: {},
+      sourceDir: "/tmp/source",
+    }),
+    createAgent: async () => ({ id: "agent-id", key: "network" } as any),
+    deleteAgent: async () => undefined,
+    listUserAgentAssignments: async () => [],
+    replaceUserAgentAssignments: async () => [],
+    ensureContainerRecordForUser: async () => undefined as any,
+    withAgentConfigLocks: async (_agentIds, callback) => callback(),
+    withUserConfigLock: async (_userId, callback) => callback(),
+    applyUserRuntimeConfiguration: async () => undefined,
+    ...overrides,
+  };
+}
+
+test("普通用户仅创建 subagent 且无主智能体时会在创建前被拒绝", async () => {
+  let created = false;
+  await assert.rejects(
+    createOwnedAgentAndAssign(
+      "user-1",
+      { key: "network-sub", files: { "agent.md": "---\nname: n\ndescription: d\nmode: subagent\n---\nbody" } },
+      userCreateServices({
+        previewAgent: async () => ({
+          key: "network-sub",
+          displayName: "Network Sub",
+          description: "desc",
+          mode: "subagent",
+          contentHash: "hash",
+          model: null,
+          tools: [],
+          skills: [],
+          scripts: [],
+          mcp: {},
+          sourceDir: "/tmp/source",
+        }),
+        createAgent: async () => {
+          created = true;
+          return { id: "agent-id", key: "network-sub" } as any;
+        },
+      }),
+    ),
+    /至少需要分配一个 primary 或 all 模式的主智能体/,
+  );
+  assert.equal(created, false);
+});
+
+test("自动分配失败时会回滚到创建前分配并删除新智能体", async () => {
+  const calls: unknown[] = [];
+  let applyAttempt = 0;
+  await assert.rejects(
+    createOwnedAgentAndAssign(
+      "user-1",
+      { key: "network-sub", files: { "agent.md": "---\nname: n\ndescription: d\nmode: subagent\n---\nbody" } },
+      userCreateServices({
+        listUserAgentAssignments: async () => [{ agentId: "lead-id", agent: { mode: "all" } } as any],
+        createAgent: async () => {
+          calls.push(["create"]);
+          return { id: "new-id", key: "network-sub" } as any;
+        },
+        replaceUserAgentAssignments: async (_userId, agentIds) => {
+          calls.push(["replace", [...agentIds]]);
+          return [];
+        },
+        deleteAgent: async (key) => {
+          calls.push(["delete", key]);
+        },
+        applyUserRuntimeConfiguration: async () => {
+          applyAttempt += 1;
+          calls.push(["apply", applyAttempt]);
+          if (applyAttempt === 1) throw new AgentServiceError("装配失败", 409);
+        },
+      }),
+    ),
+    /装配失败/,
+  );
+  assert.deepEqual(calls, [
+    ["create"],
+    ["replace", ["lead-id", "new-id"]],
+    ["apply", 1],
+    ["replace", ["lead-id"]],
+    ["delete", "network-sub"],
+    ["apply", 2],
+  ]);
 });

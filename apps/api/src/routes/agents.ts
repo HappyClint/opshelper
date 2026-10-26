@@ -10,6 +10,7 @@ import {
   deleteAgent,
   getAgent,
   listUserAgentAssignments,
+  previewAgent,
   replaceUserAgentAssignments,
   setAgentEnabled,
   updateAgent,
@@ -171,6 +172,91 @@ async function affectedUserIds(key: string) {
   }).then((items) => items.map((item) => item.userId));
 }
 
+export interface UserOwnedAgentCreateServices {
+  previewAgent: typeof previewAgent;
+  createAgent: typeof createAgent;
+  deleteAgent: typeof deleteAgent;
+  listUserAgentAssignments: typeof listUserAgentAssignments;
+  replaceUserAgentAssignments: typeof replaceUserAgentAssignments;
+  ensureContainerRecordForUser: typeof ensureContainerRecordForUser;
+  withAgentConfigLocks: typeof withAgentConfigLocks;
+  withUserConfigLock: typeof withUserConfigLock;
+  applyUserRuntimeConfiguration: typeof applyUserRuntimeConfiguration;
+}
+
+const defaultUserOwnedAgentCreateServices: UserOwnedAgentCreateServices = {
+  previewAgent,
+  createAgent,
+  deleteAgent,
+  listUserAgentAssignments,
+  replaceUserAgentAssignments,
+  ensureContainerRecordForUser,
+  withAgentConfigLocks,
+  withUserConfigLock,
+  applyUserRuntimeConfiguration,
+};
+
+export async function createOwnedAgentAndAssign(
+  userId: string,
+  input: { key: string; files: Record<string, string | Uint8Array> },
+  services: UserOwnedAgentCreateServices = defaultUserOwnedAgentCreateServices,
+) {
+  const validated = await services.previewAgent({ ...input, ownerId: userId });
+  const assignedBefore = await services.listUserAgentAssignments(userId);
+  const hasLeadAgent = assignedBefore.some((entry) => entry.agent.mode !== "subagent");
+  if (validated.mode === "subagent" && !hasLeadAgent) {
+    throw new AgentServiceError("至少需要分配一个 primary 或 all 模式的主智能体");
+  }
+
+  let created: Awaited<ReturnType<typeof createAgent>> | null = null;
+  let rollbackAgentIds: string[] | null = null;
+  let assignmentApplied = false;
+  try {
+    created = await services.createAgent({ ...input, ownerId: userId });
+    const createdAgent = created;
+    await services.ensureContainerRecordForUser(userId);
+    await services.withAgentConfigLocks([createdAgent.id], () => services.withUserConfigLock(userId, async () => {
+      const assigned = await services.listUserAgentAssignments(userId);
+      rollbackAgentIds = assigned.map((entry) => entry.agentId);
+      const desiredAgentIds = Array.from(new Set([...assigned.map((entry) => entry.agentId), createdAgent.id]));
+      await services.replaceUserAgentAssignments(userId, desiredAgentIds);
+      assignmentApplied = true;
+    }));
+    await services.applyUserRuntimeConfiguration(userId);
+    return createdAgent;
+  } catch (error) {
+    if (created) {
+      const createdAgent = created;
+      const rollbackErrors: string[] = [];
+      let restoredAssignments = false;
+      try {
+        await services.withAgentConfigLocks([createdAgent.id], () => services.withUserConfigLock(userId, async () => {
+          if (assignmentApplied) {
+            try {
+              await services.replaceUserAgentAssignments(userId, rollbackAgentIds ?? []);
+              restoredAssignments = true;
+            } catch (restoreError) {
+              rollbackErrors.push(restoreError instanceof Error ? restoreError.message : String(restoreError));
+            }
+          }
+          try {
+            await services.deleteAgent(createdAgent.key);
+          } catch (deleteError) {
+            rollbackErrors.push(deleteError instanceof Error ? deleteError.message : String(deleteError));
+          }
+        }));
+        if (restoredAssignments) await services.applyUserRuntimeConfiguration(userId);
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError));
+      }
+      if (rollbackErrors.length) {
+        throw new AgentServiceError(`智能体创建失败且回滚失败：${rollbackErrors.join("；")}`, 500);
+      }
+    }
+    throw error;
+  }
+}
+
 async function agentIdForKey(key: string) {
   const agent = await prisma.agent.findUnique({ where: { key }, select: { id: true } });
   if (!agent) throw new AgentServiceError("Agent 不存在", 404);
@@ -292,18 +378,10 @@ export async function registerAgentRoutes(app: FastifyInstance) {
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "智能体目录内容不完整" });
     try {
-      const created = await createAgent({
+      await createOwnedAgentAndAssign(user.id, {
         key: parsed.data.key,
         files: decodeDirectoryFiles(parsed.data),
-        ownerId: user.id,
       });
-      await ensureContainerRecordForUser(user.id);
-      await withAgentConfigLocks([created.id], () => withUserConfigLock(user.id, async () => {
-        const assigned = await listUserAgentAssignments(user.id);
-        const desiredAgentIds = Array.from(new Set([...assigned.map((entry) => entry.agentId), created.id]));
-        await replaceUserAgentAssignments(user.id, desiredAgentIds);
-      }));
-      await applyUserRuntimeConfiguration(user.id);
       return reply.code(201).send({ agent: await serializeAgentDetail(parsed.data.key, true) });
     } catch (error) {
       return handleAgentError(reply, error);

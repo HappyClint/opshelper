@@ -552,6 +552,15 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
     });
   }
 
+  async function previewAgent(input: AgentDirectoryInput) {
+    const key = assertValidAgentKey(input.key);
+    return withKeyLock(key, async () => {
+      const { staging, validated } = await prepare({ ...input, key });
+      await rm(staging, { recursive: true, force: true });
+      return validated;
+    });
+  }
+
   async function updateAgent(keyInput: string, input: Omit<AgentDirectoryInput, "key">) {
     const key = assertValidAgentKey(keyInput);
     return withKeyLock(key, async () => {
@@ -812,6 +821,7 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
   }
 
   return {
+    previewAgent,
     createAgent,
     updateAgent,
     deleteAgent,
@@ -858,6 +868,7 @@ const defaultService = createAgentService({
 });
 
 export const createAgent = defaultService.createAgent;
+export const previewAgent = defaultService.previewAgent;
 export const updateAgent = defaultService.updateAgent;
 export const deleteAgent = defaultService.deleteAgent;
 export const setAgentEnabled = defaultService.setAgentEnabled;
