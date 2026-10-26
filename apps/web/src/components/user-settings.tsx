@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { UserPortalSnapshot } from "@opshelper/shared";
 
 import { AdminAccountSettings } from "./admin-account-settings";
@@ -56,6 +57,20 @@ export function UserSettings({ snapshot }: { snapshot: UserPortalSnapshot }) {
       </article>
 
       <AdminAccountSettings username={user.username} name={user.name} />
+
+      <article className="panel panel-form">
+        <div className="panel-header">
+          <div className="panel-title">智能体编辑</div>
+        </div>
+        <div className="muted">
+          从个人设置可直接进入智能体目录，创建或编辑你的智能体；保存后会自动分配到你的运行环境。
+        </div>
+        <div className="inline-actions" style={{ marginTop: 12 }}>
+          <Link className="button-secondary" href="/agents">
+            进入智能体编辑界面
+          </Link>
+        </div>
+      </article>
     </div>
   );
 }
