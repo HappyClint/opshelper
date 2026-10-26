@@ -117,31 +117,6 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function agentFrontmatterScalar(document: string, key: "name" | "display_name" | "description") {
-  const frontmatter = /^﻿?---\r?\n([\s\S]*?)\r?\n---/.exec(document)?.[1] ?? "";
-  const value = new RegExp(`^${key}:\\s*(.*)$`, "m").exec(frontmatter)?.[1]?.trim() ?? "";
-  try {
-    return value.startsWith("\"") ? JSON.parse(value) as string : value;
-  } catch {
-    return value;
-  }
-}
-
-function setAgentFrontmatterScalar(
-  document: string,
-  key: "name" | "display_name" | "description",
-  value: string,
-) {
-  const match = /^﻿?---\r?\n([\s\S]*?)\r?\n---/.exec(document);
-  if (!match) return document;
-  const quoted = JSON.stringify(value);
-  const field = new RegExp(`^${key}:\\s*.*$`, "m");
-  const frontmatter = field.test(match[1])
-    ? match[1].replace(field, () => `${key}: ${quoted}`)
-    : `${match[1]}\n${key}: ${quoted}`;
-  return `${document.slice(0, match.index)}---\n${frontmatter}\n---${document.slice(match.index + match[0].length)}`;
-}
-
 // 左侧目录树的一行文件：图标 + 文件名 + 二进制标记，缩进由深度决定。
 function AgentTreeFile({
   path,
@@ -295,14 +270,6 @@ export function AgentManagementPanel({
     () => parseAgentReferences(files["agent.md"] ?? ""),
     [files],
   );
-  const agentName = agentFrontmatterScalar(
-    files["agent.md"] ?? "",
-    agentFrontmatterScalar(files["agent.md"] ?? "", "display_name") ? "display_name" : "name",
-  );
-  const agentDescription = agentFrontmatterScalar(files["agent.md"] ?? "", "description");
-  const agentNameField = agentFrontmatterScalar(files["agent.md"] ?? "", "display_name")
-    ? "display_name"
-    : "name";
   const fileTree = useMemo(
     () => buildAgentFileTree(editorFileNames, references.skills),
     [editorFileNames, references.skills],
@@ -465,13 +432,6 @@ export function AgentManagementPanel({
       ? current
       : { ...current, "mcp.json": EMPTY_MCP_CONFIGURATION });
     selectFile("mcp.json");
-  }
-
-  function updateAgentMetadata(field: "name" | "display_name" | "description", value: string) {
-    setFiles((current) => ({
-      ...current,
-      "agent.md": setAgentFrontmatterScalar(current["agent.md"] ?? NEW_AGENT_TEMPLATE, field, value),
-    }));
   }
 
   async function uploadSkillPackage(file: File) {
@@ -856,24 +816,7 @@ export function AgentManagementPanel({
                     {editorMode === "create" ? (
                       <label className="field"><span className="field-label">目录 key</span><input className="field-input mono" value={agentKey} onChange={(event) => setAgentKey(event.target.value)} placeholder="network-ops" /></label>
                     ) : null}
-                    <label className="field">
-                      <span className="field-label">智能体名称</span>
-                      <input
-                        className="field-input"
-                        value={agentName}
-                        onChange={(event) => updateAgentMetadata(agentNameField, event.target.value)}
-                        placeholder="例如：网络运维助手"
-                      />
-                    </label>
-                    <label className="field">
-                      <span className="field-label">职责说明</span>
-                      <input
-                        className="field-input"
-                        value={agentDescription}
-                        onChange={(event) => updateAgentMetadata("description", event.target.value)}
-                        placeholder="说明这个智能体负责的工作范围"
-                      />
-                    </label>
+                    <p className="muted">智能体名称和职责说明请在下方 <span className="mono">agent.md</span> 的 frontmatter 中设置与修改。</p>
                     <div className="agent-editor-actions">
                       <input ref={skillUploadRef} hidden type="file" accept=".zip,application/zip" onChange={(event) => {
                         const file = event.target.files?.[0];

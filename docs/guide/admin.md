@@ -39,6 +39,7 @@
 - 可选的 `mcp.json`。
 
 编辑页左侧是按目录分组的文件树：`agent.md` 与 `mcp.json` 归在“定义与配置”，每个 Skill 是独立分组并标出是否已被 `agent.md` 引用，脚本单独一组；右侧只编辑当前选中的文件。未引用的 Skill 不会进入运行时。
+创建智能体时，界面顶部只填写 `目录 key`；智能体名称与职责说明统一在下方 `agent.md` 的 frontmatter 中维护。
 
 编辑器支持上传单个 ZIP Skill 包。压缩包必须包含且只能包含一个 `SKILL.md`；系统读取其中的 `name`，保留附属文本和二进制资源，放入 `skills/<name>/`，并自动把技能加入 `agent.md` 的 `skills` 列表。`SKILL.md` 的 `name` 必须与源目录名一致。运行时会加上 Agent key 前缀，并通过 `permission.skill` 只授权给所属 Agent，避免同一用户其他 Agent 意外调用。
 
