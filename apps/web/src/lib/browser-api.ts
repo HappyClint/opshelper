@@ -161,9 +161,14 @@ export async function deleteAgent(key: string, scope: AgentApiScope = "admin") {
   });
 }
 
-export async function setAgentEnabled(key: string, isEnabled: boolean) {
+export async function setAgentEnabled(
+  key: string,
+  isEnabled: boolean,
+  scope: AgentApiScope = "admin",
+) {
+  const basePath = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
   return fetchJson<{ agent: AgentDetail }>(
-    `/v1/admin/agents/${encodeURIComponent(key)}`,
+    `${basePath}/${encodeURIComponent(key)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -172,9 +177,10 @@ export async function setAgentEnabled(key: string, isEnabled: boolean) {
   );
 }
 
-export async function checkAgent(key: string) {
+export async function checkAgent(key: string, scope: AgentApiScope = "admin") {
+  const basePath = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
   return fetchJson<{ agent: AgentDetail }>(
-    `/v1/admin/agents/${encodeURIComponent(key)}/check`,
+    `${basePath}/${encodeURIComponent(key)}/check`,
     { method: "POST" },
   );
 }

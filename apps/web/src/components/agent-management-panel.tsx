@@ -517,7 +517,7 @@ export function AgentManagementPanel({
     if (!detail) return;
     setBusy(true);
     try {
-      await checkAgent(detail.key);
+      await checkAgent(detail.key, scope);
       await refreshAgents(detail.key);
       const response = await getAgent(detail.key, scope);
       setDetail(response.agent);
@@ -533,11 +533,12 @@ export function AgentManagementPanel({
   async function changeEnabled(agent: AgentDetail, enabled: boolean) {
     setBusy(true);
     try {
-      await setAgentEnabled(agent.key, enabled);
+      await setAgentEnabled(agent.key, enabled, scope);
       await refreshAgents(agent.key);
       const response = await getAgent(agent.key, scope);
       setDetail(response.agent);
       toast.success(enabled ? "智能体已启用" : "智能体已停用，相关用户环境正在重新装配");
+      if (!adminScope) await onPersonalAgentsChanged?.();
     } catch (error) {
       toast.error(errorMessage(error, enabled ? "启用失败" : "停用失败"));
     } finally {
@@ -547,8 +548,13 @@ export function AgentManagementPanel({
   }
 
   async function deleteSelectedAgent(agent: AgentDetail) {
-    if (adminScope && agent.assignmentCount > 0) {
-      toast.error(`该智能体仍分配给 ${agent.assignmentCount} 位用户，请先撤销分配`);
+    const blockedByAssignments = adminScope
+      ? agent.assignmentCount > 0
+      : agent.assignmentCount > 1;
+    if (blockedByAssignments) {
+      toast.error(adminScope
+        ? `该智能体仍分配给 ${agent.assignmentCount} 位用户，请先撤销分配`
+        : "该智能体仍分配给其他用户，请先在用户分配中撤销");
       return;
     }
     const typed = await promptDialog({
@@ -800,14 +806,27 @@ export function AgentManagementPanel({
                       </div>
                     ) : detail.canManage ? (
                       <div className="inline-actions">
-                        <button
-                          className="button-danger"
-                          type="button"
-                          disabled={busy}
-                          onClick={() => { void deleteSelectedAgent(detail); }}
-                        >
-                          {busy ? "处理中…" : "删除"}
-                        </button>
+                        <button className="button-secondary" type="button" disabled={busy} onClick={runCheck}>重新检查</button>
+                        {detail.isEnabled ? (
+                          <button className="button-warning" type="button" disabled={busy} onClick={() => setDisableTarget(detail)}>停用</button>
+                        ) : (
+                          <button className="button" type="button" disabled={busy || detail.checkStatus !== "ready"} onClick={() => changeEnabled(detail, true)}>启用</button>
+                        )}
+                        <span className="agent-delete-trigger">
+                          <button
+                            className="button-danger"
+                            type="button"
+                            disabled={busy || detail.assignmentCount > 1}
+                            onClick={() => { void deleteSelectedAgent(detail); }}
+                          >
+                            {busy ? "处理中…" : "删除"}
+                          </button>
+                          {detail.assignmentCount > 1 ? (
+                            <span className="agent-delete-hint" role="tooltip">
+                              该智能体仍分配给其他用户，请先在“用户分配”中撤销。
+                            </span>
+                          ) : null}
+                        </span>
                       </div>
                     ) : null}
                   </>
@@ -1027,11 +1046,11 @@ export function AgentManagementPanel({
                 <div className="agent-assignment-options">
                   {assignment.agents.map((agent) => {
                     const checked = draftAgentIds.includes(agent.id);
-                    const disabled = !agent.isEnabled || agent.checkStatus !== "ready";
+                    const disabled = !agent.canManage || (!checked && (!agent.isEnabled || agent.checkStatus !== "ready"));
                     return (
                       <label className={`agent-assignment-option${checked ? " checked" : ""}${disabled ? " disabled" : ""}`} key={agent.id}>
                         <input type="checkbox" checked={checked} disabled={disabled || assignmentBusy} onChange={(event) => setDraftAgentIds((current) => event.target.checked ? [...current, agent.id] : current.filter((id) => id !== agent.id))} />
-                        <span><strong>{agent.displayName}</strong><small className="mono">{agent.key} · {agentModeView(agent.mode).label}</small><small>{agent.description}</small></span>
+                        <span><strong>{agent.displayName}</strong><small className="mono">{agent.key} · {agentModeView(agent.mode).label}</small><small>{agent.canManage ? agent.description : "用户私有智能体；管理员不能调整此项分配。"}</small></span>
                       </label>
                     );
                   })}
@@ -1079,18 +1098,18 @@ export function AgentManagementPanel({
         onConfirm={() => { if (skillDeleteTarget) removeSkillDirectory(skillDeleteTarget); }}
       />
 
-      {adminScope ? (
-        <ConfirmDialog
-          open={disableTarget !== null}
-          title={`停用 ${disableTarget?.displayName ?? "智能体"}`}
-          description="相关用户会立即停止当前协作任务并重建运行环境；历史会话和个人文件会保留。"
-          confirmLabel="停用并重新装配"
-          variant="danger"
-          busy={busy}
-          onCancel={() => setDisableTarget(null)}
-          onConfirm={() => { if (disableTarget) void changeEnabled(disableTarget, false); }}
-        />
-      ) : null}
+      <ConfirmDialog
+        open={disableTarget !== null}
+        title={`停用 ${disableTarget?.displayName ?? "智能体"}`}
+        description={adminScope
+          ? "相关用户会立即停止当前协作任务并重建运行环境；历史会话和个人文件会保留。"
+          : "停用后该智能体将从你的可用列表中移除；重新启用后会再次装配到你的运行环境。"}
+        confirmLabel={adminScope ? "停用并重新装配" : "停用智能体"}
+        variant="danger"
+        busy={busy}
+        onCancel={() => setDisableTarget(null)}
+        onConfirm={() => { if (disableTarget) void changeEnabled(disableTarget, false); }}
+      />
     </div>
   );
 }

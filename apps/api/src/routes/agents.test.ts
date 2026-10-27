@@ -4,7 +4,9 @@ import Fastify from "fastify";
 
 import { AgentServiceError } from "../lib/agent-service";
 import {
+  assertAdminAgentSelection,
   createOwnedAgentAndAssign,
+  createAgentFromCatalog,
   registerAgentDeleteRoute,
   registerAgentRoutes,
   type AgentDeleteRouteServices,
@@ -71,6 +73,10 @@ test("完整智能体管理路由包含 DELETE 接口", async () => {
       method: "POST",
       url: "/v1/users/me/agent-catalog",
     }), true);
+    assert.equal(app.hasRoute({
+      method: "POST",
+      url: "/v1/users/me/agent-catalog/:key/check",
+    }), true);
   } finally {
     await app.close();
   }
@@ -119,6 +125,65 @@ test("非管理员不能调用智能体删除服务", async () => {
   }
 });
 
+test("管理员只能新增共享智能体分配，不能新增普通用户的私有智能体", () => {
+  const agents = [
+    { id: "shared", key: "shared-agent", ownerId: null },
+    { id: "private", key: "private-agent", ownerId: "user-1" },
+    { id: "legacy-admin", key: "legacy-admin-agent", ownerId: "admin-1", ownerRole: "ADMIN" },
+  ];
+
+  assert.doesNotThrow(() => assertAdminAgentSelection(["shared"], agents, new Set()));
+  assert.doesNotThrow(() => assertAdminAgentSelection(["legacy-admin"], agents, new Set()));
+  assert.throws(
+    () => assertAdminAgentSelection(["private"], agents, new Set()),
+    (error: unknown) => error instanceof AgentServiceError && error.statusCode === 403,
+  );
+});
+
+test("管理员保存分配时可以保留既有私有智能体，但不能将其作为新分配", () => {
+  const agents = [{ id: "private", key: "private-agent", ownerId: "user-1" }];
+
+  assert.doesNotThrow(() => assertAdminAgentSelection(["private"], agents, new Set(["private"])));
+  assert.throws(
+    () => assertAdminAgentSelection(["private"], agents, new Set()),
+    (error: unknown) => error instanceof AgentServiceError && error.statusCode === 403,
+  );
+});
+
+test("管理员从个人智能体目录创建共享智能体，普通用户仍走私有自动分配流程", async () => {
+  const calls: unknown[] = [];
+  const services = {
+    createSharedAgent: async (input: {
+      key: string;
+      files: Record<string, string | Uint8Array>;
+      ownerId?: string | null;
+    }) => {
+      calls.push(["shared", input.ownerId]);
+      return { id: "shared-id" };
+    },
+    createOwnedAgent: async (
+      userId: string,
+      _input: { key: string; files: Record<string, string | Uint8Array> },
+    ) => {
+      calls.push(["owned", userId]);
+      return { id: "private-id" };
+    },
+  };
+
+  await createAgentFromCatalog(
+    { id: "admin-1", role: "admin" },
+    { key: "shared-agent", files: {} },
+    services,
+  );
+  await createAgentFromCatalog(
+    { id: "user-1", role: "user" },
+    { key: "private-agent", files: {} },
+    services,
+  );
+
+  assert.deepEqual(calls, [["shared", null], ["owned", "user-1"]]);
+});
+
 function userCreateServices(
   overrides: Partial<UserOwnedAgentCreateServices> = {},
 ): UserOwnedAgentCreateServices {
@@ -142,7 +207,7 @@ function userCreateServices(
     replaceUserAgentAssignments: async () => [],
     ensureContainerRecordForUser: async () => undefined as any,
     withAgentConfigLocks: async (_agentIds, callback) => callback(),
-    withUserConfigLock: async (_userId, callback) => callback(),
+    withUserConfigLock: async (_userId, callback) => callback({} as any),
     applyUserRuntimeConfiguration: async () => undefined,
     ...overrides,
   };

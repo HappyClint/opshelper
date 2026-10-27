@@ -51,8 +51,15 @@ function statusCodeOf(error: unknown) {
   return null;
 }
 
-function handleAgentError(reply: FastifyReply, error: unknown) {
+function handleAgentError(reply: FastifyReply, error: unknown, duplicateKey?: string) {
   if (error instanceof ZipError) return reply.code(400).send({ message: error.message });
+  if (
+    duplicateKey
+    && error instanceof Prisma.PrismaClientKnownRequestError
+    && error.code === "P2002"
+  ) {
+    return reply.code(409).send({ message: `智能体 key「${duplicateKey}」已存在，请使用其他 key` });
+  }
   const statusCode = statusCodeOf(error);
   if (statusCode && error instanceof Error) {
     return reply.code(statusCode).send({ message: error.message });
@@ -72,6 +79,7 @@ function serializeAgent(record: {
   checkError: string | null;
   checkedAt: Date | null;
   _count?: { users: number };
+  owner?: { role: string } | null;
 }, canManage = true) {
   return {
     id: record.id,
@@ -91,24 +99,33 @@ function serializeAgent(record: {
 
 async function listAgentSummaries() {
   const agents = await prisma.agent.findMany({
+    where: { OR: [{ ownerId: null }, { owner: { is: { role: "ADMIN" } } }] },
     include: { _count: { select: { users: true } } },
     orderBy: { key: "asc" },
   });
   return agents.map((agent) => serializeAgent(agent));
 }
 
-async function listUserVisibleAgentSummaries(userId: string) {
+async function listUserVisibleAgentSummaries(userId: string, canManageAll = false) {
   const agents = await prisma.agent.findMany({
     where: {
       OR: [
+        ...(canManageAll ? [{ ownerId: null }] : []),
+        ...(canManageAll ? [{ owner: { is: { role: "ADMIN" as const } } }] : []),
         { ownerId: userId },
         { users: { some: { userId } } },
       ],
     },
-    include: { _count: { select: { users: true } } },
+    include: {
+      _count: { select: { users: true } },
+      owner: { select: { role: true } },
+    },
     orderBy: { key: "asc" },
   });
-  return agents.map((agent) => serializeAgent(agent, agent.ownerId === userId));
+  return agents.map((agent) => serializeAgent(
+    agent,
+    canManageAll || agent.ownerId === userId || agent.owner?.role === "ADMIN",
+  ));
 }
 
 function decodeDirectoryFiles(input: { files: Record<string, string>; binaryFiles?: Record<string, string> }) {
@@ -140,7 +157,22 @@ async function serializeAgentDetail(key: string, canManage = true) {
   return { ...serializeAgent(record, canManage), files, binaryFiles };
 }
 
-async function getUserVisibleAgent(userId: string, key: string) {
+async function getUserVisibleAgent(userId: string, key: string, canManageAll = false) {
+  if (canManageAll) {
+    const agent = await prisma.agent.findFirst({
+      where: {
+        key,
+        OR: [
+          { ownerId: null },
+          { ownerId: userId },
+          { owner: { is: { role: "ADMIN" } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!agent) throw new AgentServiceError("Agent 不存在", 404);
+    return serializeAgentDetail(key, true);
+  }
   const agent = await prisma.agent.findFirst({
     where: {
       key,
@@ -164,6 +196,21 @@ async function requireOwnedAgent(userId: string, key: string) {
   return agent;
 }
 
+async function requireManageableAgent(user: { id: string; role: string }, key: string) {
+  if (user.role === "admin") {
+    const agent = await prisma.agent.findUnique({
+      where: { key },
+      select: { id: true, ownerId: true, owner: { select: { role: true } } },
+    });
+    if (!agent) throw new AgentServiceError("Agent 不存在", 404);
+    if (agent.ownerId !== null && agent.owner?.role !== "ADMIN" && agent.ownerId !== user.id) {
+      throw new AgentServiceError("管理员不能管理普通用户创建的私有智能体", 403);
+    }
+    return agent;
+  }
+  return requireOwnedAgent(user.id, key);
+}
+
 async function affectedUserIds(key: string) {
   return prisma.userAgent.findMany({
     where: { agent: { key } },
@@ -173,15 +220,26 @@ async function affectedUserIds(key: string) {
 }
 
 export interface UserOwnedAgentCreateServices {
-  previewAgent: typeof previewAgent;
-  createAgent: typeof createAgent;
-  deleteAgent: typeof deleteAgent;
-  listUserAgentAssignments: typeof listUserAgentAssignments;
-  replaceUserAgentAssignments: typeof replaceUserAgentAssignments;
-  ensureContainerRecordForUser: typeof ensureContainerRecordForUser;
+  previewAgent: (input: {
+    key: string;
+    files: Record<string, string | Uint8Array>;
+    ownerId?: string | null;
+  }) => Promise<Awaited<ReturnType<typeof previewAgent>>>;
+  createAgent: (input: {
+    key: string;
+    files: Record<string, string | Uint8Array>;
+    ownerId?: string | null;
+  }) => Promise<Awaited<ReturnType<typeof createAgent>>>;
+  deleteAgent: (key: string) => Promise<unknown>;
+  listUserAgentAssignments: (userId: string) => Promise<Array<{
+    agentId: string;
+    agent: { mode: string };
+  }>>;
+  replaceUserAgentAssignments: (userId: string, agentIds: string[]) => Promise<unknown>;
+  ensureContainerRecordForUser: (userId: string) => Promise<unknown>;
   withAgentConfigLocks: typeof withAgentConfigLocks;
   withUserConfigLock: typeof withUserConfigLock;
-  applyUserRuntimeConfiguration: typeof applyUserRuntimeConfiguration;
+  applyUserRuntimeConfiguration: (userId: string) => Promise<unknown>;
 }
 
 const defaultUserOwnedAgentCreateServices: UserOwnedAgentCreateServices = {
@@ -257,10 +315,59 @@ export async function createOwnedAgentAndAssign(
   }
 }
 
+export interface AgentCatalogCreateServices {
+  createSharedAgent: (input: {
+    key: string;
+    files: Record<string, string | Uint8Array>;
+    ownerId?: string | null;
+  }) => Promise<unknown>;
+  createOwnedAgent: (
+    userId: string,
+    input: { key: string; files: Record<string, string | Uint8Array> },
+  ) => Promise<unknown>;
+}
+
+const defaultAgentCatalogCreateServices: AgentCatalogCreateServices = {
+  createSharedAgent: createAgent,
+  createOwnedAgent: createOwnedAgentAndAssign,
+};
+
+export function createAgentFromCatalog(
+  user: { id: string; role: string },
+  input: { key: string; files: Record<string, string | Uint8Array> },
+  services: AgentCatalogCreateServices = defaultAgentCatalogCreateServices,
+) {
+  if (user.role === "admin") {
+    return services.createSharedAgent({ ...input, ownerId: null });
+  }
+  return services.createOwnedAgent(user.id, input);
+}
+
 async function agentIdForKey(key: string) {
-  const agent = await prisma.agent.findUnique({ where: { key }, select: { id: true } });
+  const agent = await prisma.agent.findUnique({
+    where: { key },
+    select: { id: true, ownerId: true, owner: { select: { role: true } } },
+  });
   if (!agent) throw new AgentServiceError("Agent 不存在", 404);
+  if (agent.ownerId !== null && agent.owner?.role !== "ADMIN") {
+    throw new AgentServiceError("管理员不能检查或管理普通用户创建的私有智能体", 403);
+  }
   return agent.id;
+}
+
+export function assertAdminAgentSelection(
+  requestedIds: string[],
+  agents: Array<{ id: string; key: string; ownerId: string | null; ownerRole?: string | null }>,
+  existingPrivateIds: ReadonlySet<string>,
+): void {
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
+  for (const id of new Set(requestedIds)) {
+    const agent = byId.get(id);
+    if (!agent) throw new AgentServiceError("分配清单包含不存在的 Agent");
+    if (agent.ownerId !== null && agent.ownerRole !== "ADMIN" && !existingPrivateIds.has(id)) {
+      throw new AgentServiceError(`管理员不能分配普通用户创建的私有智能体「${agent.key}」`, 403);
+    }
+  }
 }
 
 export interface AgentDeleteRouteServices {
@@ -302,10 +409,23 @@ async function buildUserAssignmentSnapshot(userId: string) {
     prisma.user.findUnique({ where: { id: userId } }),
     listUserAgentAssignments(userId),
     prisma.agent.findMany({
-      where: { OR: [{ ownerId: null }, { ownerId: userId }] },
-      include: { _count: { select: { users: true } } },
+      where: {
+        OR: [
+          { ownerId: null },
+          { owner: { is: { role: "ADMIN" } } },
+          { ownerId: userId },
+          { users: { some: { userId } } },
+        ],
+      },
+      include: {
+        _count: { select: { users: true } },
+        owner: { select: { role: true } },
+      },
       orderBy: { key: "asc" },
-    }).then((agents) => agents.map((agent) => serializeAgent(agent))),
+    }).then((agents) => agents.map((agent) => serializeAgent(
+      agent,
+      agent.ownerId === null || agent.owner?.role === "ADMIN",
+    ))),
     getUserRuntimeConfiguration(userId),
   ]);
   if (!user || !configuration) throw new AgentServiceError("用户不存在", 404);
@@ -345,14 +465,14 @@ export async function registerAgentRoutes(app: FastifyInstance) {
   app.get("/v1/users/me/agent-catalog", async (request, reply) => {
     const user = await requireSession(request, reply);
     if (!user) return;
-    return { agents: await listUserVisibleAgentSummaries(user.id) };
+    return { agents: await listUserVisibleAgentSummaries(user.id, user.role === "admin") };
   });
 
   app.get<{ Params: { key: string } }>("/v1/users/me/agent-catalog/:key", async (request, reply) => {
     const user = await requireSession(request, reply);
     if (!user) return;
     try {
-      return { agent: await getUserVisibleAgent(user.id, request.params.key) };
+      return { agent: await getUserVisibleAgent(user.id, request.params.key, user.role === "admin") };
     } catch (error) {
       return handleAgentError(reply, error);
     }
@@ -378,13 +498,14 @@ export async function registerAgentRoutes(app: FastifyInstance) {
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ message: "智能体目录内容不完整" });
     try {
-      await createOwnedAgentAndAssign(user.id, {
+      const input = {
         key: parsed.data.key,
         files: decodeDirectoryFiles(parsed.data),
-      });
+      };
+      await createAgentFromCatalog(user, input);
       return reply.code(201).send({ agent: await serializeAgentDetail(parsed.data.key, true) });
     } catch (error) {
-      return handleAgentError(reply, error);
+      return handleAgentError(reply, error, parsed.data.key);
     }
   });
 
@@ -392,16 +513,44 @@ export async function registerAgentRoutes(app: FastifyInstance) {
     const user = await requireSession(request, reply);
     if (!user) return;
     const parsed = patchSchema.safeParse(request.body);
-    if (!parsed.success || !("files" in parsed.data)) {
+    if (!parsed.success) {
       return reply.code(400).send({ message: "修改内容不正确" });
     }
     try {
-      const agent = await requireOwnedAgent(user.id, request.params.key);
-      await withAgentConfigLocks([agent.id], () => withUserConfigLock(user.id, async () => {
-        await updateAgent(request.params.key, { files: decodeDirectoryFiles(parsed.data) });
+      const agent = await requireManageableAgent(user, request.params.key);
+      const users = user.role === "admin"
+        ? Array.from(new Set([user.id, ...await affectedUserIds(request.params.key)]))
+        : [user.id];
+      await withAgentConfigLocks([agent.id], () => withUserConfigLocks(users, async () => {
+        if ("files" in parsed.data) {
+          await updateAgent(request.params.key, { files: decodeDirectoryFiles(parsed.data) });
+        } else {
+          await setAgentEnabled(request.params.key, parsed.data.isEnabled);
+        }
       }));
-      await pauseInvalidSchedulesForUser(user.id);
-      queueUserRuntimeConfiguration(user.id);
+      for (const userId of users) {
+        await pauseInvalidSchedulesForUser(userId);
+        queueUserRuntimeConfiguration(userId);
+      }
+      return { agent: await serializeAgentDetail(request.params.key, true) };
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.post<{ Params: { key: string } }>("/v1/users/me/agent-catalog/:key/check", async (request, reply) => {
+    const user = await requireSession(request, reply);
+    if (!user) return;
+    try {
+      const agent = await requireManageableAgent(user, request.params.key);
+      const users = user.role === "admin"
+        ? Array.from(new Set([user.id, ...await affectedUserIds(request.params.key)]))
+        : [user.id];
+      await withAgentConfigLocks([agent.id], () => withUserConfigLocks(users, () => checkAgent(request.params.key)));
+      for (const userId of users) {
+        await pauseInvalidSchedulesForUser(userId);
+        queueUserRuntimeConfiguration(userId);
+      }
       return { agent: await serializeAgentDetail(request.params.key, true) };
     } catch (error) {
       return handleAgentError(reply, error);
@@ -412,7 +561,7 @@ export async function registerAgentRoutes(app: FastifyInstance) {
     const user = await requireSession(request, reply);
     if (!user) return;
     try {
-      const agent = await requireOwnedAgent(user.id, request.params.key);
+      const agent = await requireManageableAgent(user, request.params.key);
       await withAgentConfigLocks([agent.id], () => withUserConfigLock(user.id, async () => {
         await replaceUserAgentAssignments(
           user.id,
@@ -437,6 +586,7 @@ export async function registerAgentRoutes(app: FastifyInstance) {
   app.get<{ Params: { key: string } }>("/v1/admin/agents/:key", async (request, reply) => {
     if (!await requireAdmin(request, reply)) return;
     try {
+      await agentIdForKey(request.params.key);
       return { agent: await serializeAgentDetail(request.params.key) };
     } catch (error) {
       return handleAgentError(reply, error);
@@ -465,7 +615,7 @@ export async function registerAgentRoutes(app: FastifyInstance) {
       await createAgent({ key: parsed.data.key, files: decodeDirectoryFiles(parsed.data) });
       return reply.code(201).send({ agent: await serializeAgentDetail(parsed.data.key) });
     } catch (error) {
-      return handleAgentError(reply, error);
+      return handleAgentError(reply, error, parsed.data.key);
     }
   });
 
@@ -549,7 +699,31 @@ export async function registerAgentRoutes(app: FastifyInstance) {
           if (current.desiredGeneration !== parsed.data.expectedDesiredGeneration) {
             throw new AgentServiceError("分配状态已变化，请刷新后重试", 409);
           }
-          await replaceUserAgentAssignments(request.params.userId, parsed.data.agentIds);
+          const currentEntries = await tx.userAgent.findMany({
+            where: { userId: request.params.userId },
+            include: { agent: { select: { ownerId: true, owner: { select: { role: true } } } } },
+          });
+          const existingPrivateIds = new Set(
+            currentEntries
+              .filter((entry) => entry.agent.ownerId !== null && entry.agent.owner?.role !== "ADMIN")
+              .map((entry) => entry.agentId),
+          );
+          const selected = await tx.agent.findMany({
+            where: { id: { in: parsed.data.agentIds } },
+            select: { id: true, key: true, ownerId: true, owner: { select: { role: true } } },
+          });
+          assertAdminAgentSelection(
+            parsed.data.agentIds,
+            selected.map((agent) => ({ ...agent, ownerRole: agent.owner?.role ?? null })),
+            existingPrivateIds,
+          );
+          const selectedSharedIds = selected
+            .filter((agent) => agent.ownerId === null || agent.owner?.role === "ADMIN")
+            .map((agent) => agent.id);
+          await replaceUserAgentAssignments(
+            request.params.userId,
+            Array.from(new Set([...selectedSharedIds, ...existingPrivateIds])),
+          );
           await pauseInvalidSchedulesForUser(request.params.userId);
         }));
       await applyUserRuntimeConfiguration(request.params.userId);

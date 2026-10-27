@@ -354,7 +354,7 @@ test("subagent mode is persisted and cannot be the user's only assigned agent", 
   }
 });
 
-test("disabling or editing an assigned Agent freezes new work with a new generation", async () => {
+test("disabling an assigned Agent excludes it from runtime while preserving generation flow", async () => {
   const { dataRoot, fake, service } = await fixture();
   try {
     const agent = await service.createAgent({ key: "network", files: validFiles() });
@@ -362,11 +362,43 @@ test("disabling or editing an assigned Agent freezes new work with a new generat
     await service.setAgentEnabled("network", false);
     assert.equal(fake.containers[0].desiredGeneration, 2);
     assert.equal(fake.containers[0].configApplyStatus, "REVOKING");
-    await assert.rejects(service.getAssignedRuntimeDefinition("user-1"), /未启用/);
+    const afterDisable = await service.getAssignedRuntimeDefinition("user-1");
+    assert.deepEqual(afterDisable.agents, []);
     await service.setAgentEnabled("network", true);
     await service.updateAgent("network", { files: validFiles("updated") });
     assert.equal(fake.containers[0].desiredGeneration, 4);
     assert.equal(fake.containers[0].configApplyStatus, "DRAINING");
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test("disabling one Agent does not block other assigned Agents of the same user", async () => {
+  const { dataRoot, service } = await fixture();
+  try {
+    const network = await service.createAgent({ key: "network", files: validFiles("network") });
+    const storage = await service.createAgent({ key: "storage", files: validFiles("storage") });
+    await service.replaceUserAgentAssignments("user-1", [network.id, storage.id]);
+    await service.setAgentEnabled("network", false);
+    const definition = await service.getAssignedRuntimeDefinition("user-1");
+    assert.deepEqual(definition.agents.map((agent) => agent.key), ["storage"]);
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test("disabled already-assigned Agent does not block later assignment edits", async () => {
+  const { dataRoot, fake, service } = await fixture();
+  try {
+    const network = await service.createAgent({ key: "network", files: validFiles("network") });
+    const storage = await service.createAgent({ key: "storage", files: validFiles("storage") });
+    const monitor = await service.createAgent({ key: "monitor", files: validFiles("monitor") });
+    await service.replaceUserAgentAssignments("user-1", [network.id, storage.id]);
+    await service.setAgentEnabled("network", false);
+
+    const updated = await service.replaceUserAgentAssignments("user-1", [network.id, monitor.id]);
+    assert.deepEqual(updated.map((entry) => entry.agent.key).sort(), ["monitor", "network"]);
+    assert.equal(fake.containers[0].configApplyStatus, "REVOKING");
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
