@@ -4,6 +4,7 @@ import type {
   AdminUsersSnapshot,
   AgentDetail,
   AgentSummary,
+  SkillRepositorySkillSummary,
   UserAgentAssignmentsSnapshot,
 } from "@opshelper/shared";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -11,10 +12,12 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import {
   checkAgent,
   createAgent,
+  getSkillRepositorySkill,
   deleteAgent,
   getAgent,
   getUserAgentAssignments,
   importAgentSkillPackage,
+  listSkillRepository,
   listAgents,
   reconcileUserAgentAssignments,
   replaceUserAgentAssignments,
@@ -252,6 +255,12 @@ export function AgentManagementPanel({
   const skillUploadRef = useRef<HTMLInputElement>(null);
   const [newFilePath, setNewFilePath] = useState("");
   const [busy, setBusy] = useState(false);
+  const [skillRepositoryOpen, setSkillRepositoryOpen] = useState(false);
+  const [repositoryBusy, setRepositoryBusy] = useState(false);
+  const [repositorySkills, setRepositorySkills] = useState<SkillRepositorySkillSummary[]>([]);
+  const [repositoryQuery, setRepositoryQuery] = useState("");
+  const [selectedRepositorySkills, setSelectedRepositorySkills] = useState<string[]>([]);
+  const [expandedRepositoryDescriptions, setExpandedRepositoryDescriptions] = useState<string[]>([]);
   const [disableTarget, setDisableTarget] = useState<AgentDetail | null>(null);
   const [skillDeleteTarget, setSkillDeleteTarget] = useState<AgentSkillGroup | null>(null);
 
@@ -320,6 +329,14 @@ export function AgentManagementPanel({
       [agent.key, agent.displayName, agent.description].some((value) => value.toLowerCase().includes(needle)),
     );
   }, [agents, query]);
+  const filteredRepositorySkills = useMemo(() => {
+    const needle = repositoryQuery.trim().toLowerCase();
+    if (!needle) return repositorySkills;
+    return repositorySkills.filter((skill) => skill.name.toLowerCase().includes(needle));
+  }, [repositoryQuery, repositorySkills]);
+  const visibleRepositorySkillNames = filteredRepositorySkills.map((skill) => skill.name);
+  const allVisibleRepositorySkillsSelected = visibleRepositorySkillNames.length > 0 &&
+    visibleRepositorySkillNames.every((name) => selectedRepositorySkills.includes(name));
   const searching = query.trim().length > 0;
 
   // 目录与详情在同一个画布里切换：进详情后列表不再占位，画布滚动高度骤降。
@@ -390,6 +407,7 @@ export function AgentManagementPanel({
 
   function beginCreate() {
     setEditorMode("create");
+    setSkillRepositoryOpen(false);
     setSelectedKey(null);
     setDetail(null);
     setAgentKey("");
@@ -401,11 +419,13 @@ export function AgentManagementPanel({
 
   function selectAgent(key: string) {
     rememberCatalogScroll();
+    setSkillRepositoryOpen(false);
     setSelectedKey(key);
     setEditorMode("view");
   }
 
   function closeAgentDetail() {
+    setSkillRepositoryOpen(false);
     setSelectedKey(null);
     setDetail(null);
     setEditorMode("view");
@@ -414,8 +434,8 @@ export function AgentManagementPanel({
 
   function addSupportingFile() {
     const path = newFilePath.trim();
-    if (!/^(skills\/[a-z0-9-]+\/SKILL\.md|scripts\/[A-Za-z0-9._-]+)$/.test(path)) {
-      toast.error("文件需为 skills/<名称>/SKILL.md 或 scripts/<文件名>");
+    if (!/^scripts\/[A-Za-z0-9._-]+$/.test(path)) {
+      toast.error("文件需为 scripts/<文件名>");
       return;
     }
     if (Object.hasOwn(files, path) || Object.hasOwn(binaryFiles, path)) {
@@ -434,25 +454,120 @@ export function AgentManagementPanel({
     selectFile("mcp.json");
   }
 
+  function mergeImportedSkills(importedSkills: Array<{ skillName: string; files: Record<string, string>; binaryFiles: Record<string, string> }>) {
+    const nextFiles: Record<string, string> = { ...files };
+    const nextBinaryFiles: Record<string, string> = { ...binaryFiles };
+    let nextAgentDocument = nextFiles["agent.md"] ?? NEW_AGENT_TEMPLATE;
+
+    for (const imported of importedSkills) {
+      for (const [name, content] of Object.entries(imported.files)) {
+        if (Object.hasOwn(nextFiles, name) || Object.hasOwn(nextBinaryFiles, name)) {
+          throw new Error(`技能文件已存在：${name}`);
+        }
+        nextFiles[name] = content;
+      }
+      for (const [name, content] of Object.entries(imported.binaryFiles)) {
+        if (Object.hasOwn(nextFiles, name) || Object.hasOwn(nextBinaryFiles, name)) {
+          throw new Error(`技能文件已存在：${name}`);
+        }
+        nextBinaryFiles[name] = content;
+      }
+      nextAgentDocument = addSkillReference(nextAgentDocument, imported.skillName);
+    }
+
+    nextFiles["agent.md"] = nextAgentDocument;
+    setFiles(nextFiles);
+    setBinaryFiles(nextBinaryFiles);
+  }
+
   async function uploadSkillPackage(file: File) {
     setBusy(true);
     try {
       const imported = await importAgentSkillPackage(file, scope);
-      const importedNames = [...Object.keys(imported.files), ...Object.keys(imported.binaryFiles)];
-      const conflict = importedNames.find((name) => Object.hasOwn(files, name) || Object.hasOwn(binaryFiles, name));
-      if (conflict) throw new Error(`技能文件已存在：${conflict}`);
-      setFiles((current) => ({
-        ...current,
-        ...imported.files,
-        "agent.md": addSkillReference(current["agent.md"] ?? NEW_AGENT_TEMPLATE, imported.skillName),
-      }));
-      setBinaryFiles((current) => ({ ...current, ...imported.binaryFiles }));
+      mergeImportedSkills([imported]);
       selectFile(`skills/${imported.skillName}/SKILL.md`);
-      toast.success(`已导入 Skill「${imported.skillName}」，保存后生效`);
+      toast.success(`已导入 Skill「${imported.skillName}」，仅保存到当前智能体，不进入仓库`);
     } catch (error) {
-      toast.error(errorMessage(error, "导入 Skill 包失败"));
+      toast.error(errorMessage(error, "上传 Skill 包失败"));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadSkillRepository() {
+    setRepositoryBusy(true);
+    try {
+      const snapshot = await listSkillRepository();
+      setRepositorySkills(snapshot.skills);
+      setSelectedRepositorySkills((current) =>
+        current.filter((name) => snapshot.skills.some((skill) => skill.name === name)),
+      );
+    } finally {
+      setRepositoryBusy(false);
+    }
+  }
+
+  async function openSkillRepository() {
+    setSkillRepositoryOpen(true);
+    setRepositoryQuery("");
+    setSelectedRepositorySkills([]);
+    try {
+      await loadSkillRepository();
+    } catch (error) {
+      toast.error(errorMessage(error, "读取 Skill 仓库失败"));
+    }
+  }
+
+  function closeSkillRepository() {
+    setSkillRepositoryOpen(false);
+    setSelectedRepositorySkills([]);
+    setRepositoryQuery("");
+  }
+
+  function toggleRepositorySkill(name: string) {
+    setSelectedRepositorySkills((current) =>
+      current.includes(name)
+        ? current.filter((item) => item !== name)
+        : [...current, name],
+    );
+  }
+
+  function toggleAllVisibleRepositorySkills() {
+    setSelectedRepositorySkills((current) => {
+      if (allVisibleRepositorySkillsSelected) {
+        const visible = new Set(visibleRepositorySkillNames);
+        return current.filter((name) => !visible.has(name));
+      }
+      return [...new Set([...current, ...visibleRepositorySkillNames])];
+    });
+  }
+
+  function toggleRepositoryDescription(name: string) {
+    setExpandedRepositoryDescriptions((current) =>
+      current.includes(name)
+        ? current.filter((item) => item !== name)
+        : [...current, name],
+    );
+  }
+
+  async function importSelectedSkillsFromRepository() {
+    if (!selectedRepositorySkills.length) return;
+    setBusy(true);
+    setRepositoryBusy(true);
+    try {
+      const importedSkills: Array<{ skillName: string; files: Record<string, string>; binaryFiles: Record<string, string> }> = [];
+      for (const name of selectedRepositorySkills) {
+        importedSkills.push(await getSkillRepositorySkill(name));
+      }
+      mergeImportedSkills(importedSkills);
+      selectFile(`skills/${importedSkills[0].skillName}/SKILL.md`);
+      closeSkillRepository();
+      toast.success(`已导入 ${importedSkills.length} 个 Skill，保存后生效`);
+    } catch (error) {
+      toast.error(errorMessage(error, "从 Skill 仓库导入失败"));
+    } finally {
+      setBusy(false);
+      setRepositoryBusy(false);
     }
   }
 
@@ -837,16 +952,121 @@ export function AgentManagementPanel({
                     ) : null}
                     <p className="muted">智能体名称和职责说明请在下方 <span className="mono">agent.md</span> 的 frontmatter 中设置与修改。</p>
                     <div className="agent-editor-actions">
-                      <input ref={skillUploadRef} hidden type="file" accept=".zip,application/zip" onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        if (file) void uploadSkillPackage(file);
-                      }} />
-                      <button className="button-secondary" type="button" disabled={busy} onClick={() => skillUploadRef.current?.click()}>上传 Skill 包</button>
+                      <button className="button-secondary" type="button" disabled={busy || repositoryBusy} onClick={() => { void openSkillRepository(); }}>技能仓库</button>
+                      <input
+                        ref={skillUploadRef}
+                        hidden
+                        type="file"
+                        accept=".zip,application/zip"
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          event.currentTarget.value = "";
+                          if (file) void uploadSkillPackage(file);
+                        }}
+                      />
+                      <button className="button-secondary" type="button" disabled={busy} onClick={() => skillUploadRef.current?.click()}>
+                        上传 Skill 包
+                      </button>
                       <button className="button-secondary" type="button" disabled={busy} onClick={configureMcp}>配置 MCP</button>
-                      <span className="muted">Skill 包使用 ZIP；MCP 支持 remote 和 local 配置。</span>
+                      <span className="muted">上传的 Skill 仅属于当前智能体，不会进入仓库。</span>
                     </div>
-                    <div className="agent-file-workspace">
+                    {skillRepositoryOpen ? (
+                      <section className="panel">
+                        <div className="panel-header">
+                          <div>
+                            <div className="panel-title">技能仓库</div>
+                            <div className="muted">按 name 模糊搜索，支持一次导入多个技能。</div>
+                          </div>
+                          <div className="mono muted">{repositoryBusy ? "加载中…" : `共 ${repositorySkills.length} 个`}</div>
+                        </div>
+                        <div className="agent-admin-toolbar">
+                          <div className="agent-catalog-search">
+                            <IconSearch />
+                            <input
+                              className="field-input"
+                              type="search"
+                              value={repositoryQuery}
+                              onChange={(event) => setRepositoryQuery(event.target.value)}
+                              placeholder="按技能名称搜索"
+                              aria-label="按技能名称搜索"
+                            />
+                          </div>
+                          <label className="skill-repository-select-all">
+                            <input
+                              type="checkbox"
+                              checked={allVisibleRepositorySkillsSelected}
+                              disabled={busy || repositoryBusy || !filteredRepositorySkills.length}
+                              onChange={toggleAllVisibleRepositorySkills}
+                            />
+                            <span>全选当前结果</span>
+                          </label>
+                        </div>
+                        <div className="stack">
+                          {filteredRepositorySkills.map((skill) => {
+                            const checked = selectedRepositorySkills.includes(skill.name);
+                            return (
+                              <label key={skill.name} className={`agent-assignment-option${checked ? " checked" : ""}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={busy || repositoryBusy}
+                                  onChange={() => toggleRepositorySkill(skill.name)}
+                                />
+                                <span>
+                                  <button
+                                    className="skill-repository-name"
+                                    type="button"
+                                    aria-expanded={expandedRepositoryDescriptions.includes(skill.name)}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      toggleRepositoryDescription(skill.name);
+                                    }}
+                                  >
+                                    {skill.name}
+                                  </button>
+                                  <button
+                                    className={`skill-repository-description${expandedRepositoryDescriptions.includes(skill.name) ? " expanded" : ""}`}
+                                    type="button"
+                                    aria-expanded={expandedRepositoryDescriptions.includes(skill.name)}
+                                    title="点击展开或收起技能说明"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      toggleRepositoryDescription(skill.name);
+                                    }}
+                                  >
+                                    {skill.description}
+                                  </button>
+                                  <small className="mono">{skill.fileCount} 个文件 · 更新于 {new Date(skill.updatedAt).toLocaleString("zh-CN")}</small>
+                                </span>
+                              </label>
+                            );
+                          })}
+                          {!filteredRepositorySkills.length ? (
+                            <div className="agent-catalog-empty">
+                              <strong>没有匹配的技能</strong>
+                              <span>尝试更短的关键字。</span>
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="inline-actions" style={{ marginTop: 14 }}>
+                          <button
+                            className="button"
+                            type="button"
+                            disabled={busy || repositoryBusy || !selectedRepositorySkills.length}
+                            onClick={() => { void importSelectedSkillsFromRepository(); }}
+                          >
+                            导入选中（{selectedRepositorySkills.length}）
+                          </button>
+                          <button className="button-secondary" type="button" disabled={busy || repositoryBusy} onClick={closeSkillRepository}>
+                            取消
+                          </button>
+                        </div>
+                      </section>
+                    ) : (
+                      <>
+                        <div className="agent-file-workspace">
                       <aside className="agent-file-tree" aria-label="智能体文件">
                         <div className="agent-tree-head">
                           <span>智能体文件</span>
@@ -912,7 +1132,7 @@ export function AgentManagementPanel({
                                 ) : null}
                               </div>
                             );
-                          }) : <p className="agent-tree-empty">还没有技能包。上传 ZIP，或手动添加 skills/&lt;名称&gt;/SKILL.md。</p>) : null}
+                          }) : <p className="agent-tree-empty">还没有技能。请通过“技能仓库”导入。</p>) : null}
 
                           <button className="agent-tree-group" type="button" aria-expanded={groupOpen("scripts")} onClick={() => toggleGroup("scripts")}>
                             <span className="agent-tree-chevron">{groupOpen("scripts") ? <IconChevronDown /> : <IconChevronRight />}</span>
@@ -954,7 +1174,7 @@ export function AgentManagementPanel({
                               event.preventDefault();
                               addSupportingFile();
                             }}
-                            placeholder="skills/name/SKILL.md"
+                            placeholder="scripts/run.sh"
                             aria-label="新增文件路径"
                           />
                           <button className="button-secondary" type="button" onClick={addSupportingFile}>添加</button>
@@ -977,7 +1197,7 @@ export function AgentManagementPanel({
                           {selectedIsBinary ? (
                             <div className="agent-binary-file">
                               <strong>二进制资源</strong>
-                              <span className="muted">该文件来自 Skill ZIP，不能在线编辑；保存时会按原内容写入。</span>
+                              <span className="muted">该文件来自导入技能，不能在线编辑；保存时会按原内容写入。</span>
                               <span className="mono">{selectedSize}</span>
                             </div>
                           ) : (
@@ -999,6 +1219,10 @@ export function AgentManagementPanel({
                     <div className="inline-actions">
                       <button className="button" type="button" disabled={busy || !files["agent.md"]?.trim()} onClick={saveAgent}>{busy ? "保存中…" : "保存并检查"}</button>
                       <button className="button-secondary" type="button" disabled={busy} onClick={() => {
+                        if (skillRepositoryOpen) {
+                          closeSkillRepository();
+                          return;
+                        }
                         if (detail) {
                           setFiles(detail.files);
                           setBinaryFiles(detail.binaryFiles ?? {});
@@ -1008,7 +1232,9 @@ export function AgentManagementPanel({
                         }
                       }}>取消</button>
                     </div>
-                  </div>
+                  </>
+                )}
+              </div>
                 )}
               </>
             ) : (

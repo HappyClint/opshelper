@@ -1779,6 +1779,27 @@ button.opshelper-attachment-row { cursor: pointer; }
 }
 .opshelper-page-body .agent-assignment-option:hover { border-color: var(--g-line-strong); background: var(--g-field); }
 .opshelper-page-body .agent-assignment-option.checked { border-color: var(--g-accent-line); background: var(--g-accent-soft); }
+.opshelper-page-body .skill-repository-select-all {
+  display: inline-flex; align-items: center; gap: 7px; color: var(--g-muted); font-size: 13px;
+  white-space: nowrap; cursor: pointer;
+}
+.opshelper-page-body .skill-repository-select-all input { accent-color: var(--g-accent); }
+.opshelper-page-body .skill-repository-name {
+  justify-self: start; padding: 0; border: 0; background: transparent;
+  color: var(--g-text); font: inherit; font-size: 15px; font-weight: 650;
+  text-align: left; cursor: pointer;
+}
+.opshelper-page-body .skill-repository-name:hover { color: var(--g-accent-dark); }
+.opshelper-page-body .skill-repository-description {
+  display: -webkit-box; width: 100%; padding: 0; border: 0; background: transparent;
+  color: var(--g-muted); font: inherit; font-size: 14px; line-height: 1.55; text-align: left;
+  white-space: normal; cursor: pointer; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.opshelper-page-body .skill-repository-description:hover { color: var(--g-text); }
+.opshelper-page-body .skill-repository-description.expanded {
+  display: block; overflow: visible; -webkit-line-clamp: unset;
+}
 .opshelper-page-body .agent-assignment-foot { margin-top: 14px; padding-top: 14px; }
 .opshelper-page-body .agent-file-workspace { border-color: var(--g-line); border-radius: 12px; }
 .opshelper-page-body .agent-file-tree { background: #f6f7f9; border-right-color: var(--g-line); }

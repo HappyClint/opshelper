@@ -77,6 +77,22 @@ test("完整智能体管理路由包含 DELETE 接口", async () => {
       method: "POST",
       url: "/v1/users/me/agent-catalog/:key/check",
     }), true);
+    assert.equal(app.hasRoute({
+      method: "GET",
+      url: "/v1/skill-repository",
+    }), true);
+    assert.equal(app.hasRoute({
+      method: "GET",
+      url: "/v1/skill-repository/:name",
+    }), true);
+    assert.equal(app.hasRoute({
+      method: "POST",
+      url: "/v1/admin/skill-repository/skill-package",
+    }), true);
+    assert.equal(app.hasRoute({
+      method: "DELETE",
+      url: "/v1/admin/skill-repository/:name",
+    }), true);
   } finally {
     await app.close();
   }

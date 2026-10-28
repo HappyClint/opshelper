@@ -21,6 +21,7 @@ import {
   IconArrowLeft,
   IconContainer,
   IconMenu,
+  IconSkill,
   IconUsers,
 } from "./chat/icons";
 
@@ -61,6 +62,12 @@ const ADMIN_NAV: AdminNavItem[] = [
     label: "容器管理",
     description: "状态、日志与生命周期",
     icon: <IconContainer />,
+  },
+  {
+    href: "/admin/skill-repository",
+    label: "技能仓库",
+    description: "技能新增、删除与检索",
+    icon: <IconSkill />,
   },
 ];
 

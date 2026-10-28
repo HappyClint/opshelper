@@ -223,6 +223,17 @@ export interface SkillPackageImport {
   binaryFiles: Record<string, string>;
 }
 
+export interface SkillRepositorySkillSummary {
+  name: string;
+  description: string;
+  fileCount: number;
+  updatedAt: string;
+}
+
+export interface SkillRepositorySnapshot {
+  skills: SkillRepositorySkillSummary[];
+}
+
 export type ExecutionStatus =
   | "queued"
   | "dispatching"

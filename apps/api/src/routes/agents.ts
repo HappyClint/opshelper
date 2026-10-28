@@ -26,6 +26,12 @@ import {
 import { requireAdmin, requireSession } from "../lib/session";
 import { pauseInvalidSchedulesForUser } from "../lib/schedule-service";
 import { importSkillPackage, isUtf8Text } from "../lib/skill-package";
+import {
+  createSkillRepositorySkillFromZip,
+  deleteSkillRepositorySkill,
+  getSkillRepositorySkillPackage,
+  listSkillRepositorySkills,
+} from "../lib/skill-repository-service";
 import { ZipError } from "../lib/zip";
 import { withAgentConfigLocks, withUserConfigLock, withUserConfigLocks } from "../lib/user-config-lock";
 
@@ -492,6 +498,24 @@ export async function registerAgentRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get("/v1/skill-repository", async (request, reply) => {
+    if (!await requireSession(request, reply)) return;
+    try {
+      return { skills: await listSkillRepositorySkills() };
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.get<{ Params: { name: string } }>("/v1/skill-repository/:name", async (request, reply) => {
+    if (!await requireSession(request, reply)) return;
+    try {
+      return await getSkillRepositorySkillPackage(request.params.name);
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
   app.post("/v1/users/me/agent-catalog", { bodyLimit: 90 * 1024 * 1024 }, async (request, reply) => {
     const user = await requireSession(request, reply);
     if (!user) return;
@@ -602,6 +626,30 @@ export async function registerAgentRoutes(app: FastifyInstance) {
         return reply.code(400).send({ message: "技能包必须是 .zip 文件" });
       }
       return importSkillPackage(await upload.toBuffer());
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.post("/v1/admin/skill-repository/skill-package", async (request, reply) => {
+    if (!await requireAdmin(request, reply)) return;
+    try {
+      const upload = await request.file();
+      if (!upload) return reply.code(400).send({ message: "请选择 ZIP 技能包" });
+      if (!upload.filename.toLowerCase().endsWith(".zip")) {
+        return reply.code(400).send({ message: "技能包必须是 .zip 文件" });
+      }
+      return { skill: await createSkillRepositorySkillFromZip(await upload.toBuffer()) };
+    } catch (error) {
+      return handleAgentError(reply, error);
+    }
+  });
+
+  app.delete<{ Params: { name: string } }>("/v1/admin/skill-repository/:name", async (request, reply) => {
+    if (!await requireAdmin(request, reply)) return;
+    try {
+      await deleteSkillRepositorySkill(request.params.name);
+      return reply.code(204).send();
     } catch (error) {
       return handleAgentError(reply, error);
     }

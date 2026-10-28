@@ -22,6 +22,8 @@ import type {
   ScheduleRunAnswerResponse,
   SchedulesResponse,
   SkillPackageImport,
+  SkillRepositorySkillSummary,
+  SkillRepositorySnapshot,
 } from "@opshelper/shared";
 
 export type AgentApiScope = "admin" | "user";
@@ -126,6 +128,36 @@ export async function importAgentSkillPackage(file: File, scope: AgentApiScope =
   return fetchJson<SkillPackageImport>(path, {
     method: "POST",
     body,
+  });
+}
+
+export async function listSkillRepository() {
+  return fetchJson<SkillRepositorySnapshot>("/v1/skill-repository", {
+    cache: "no-store",
+  });
+}
+
+export async function getSkillRepositorySkill(skillName: string) {
+  return fetchJson<SkillPackageImport>(`/v1/skill-repository/${encodeURIComponent(skillName)}`, {
+    cache: "no-store",
+  });
+}
+
+export async function createSkillRepositorySkill(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return fetchJson<{ skill: SkillRepositorySkillSummary }>(
+    "/v1/admin/skill-repository/skill-package",
+    {
+      method: "POST",
+      body,
+    },
+  );
+}
+
+export async function deleteSkillRepositorySkill(skillName: string) {
+  return fetchJson<void>(`/v1/admin/skill-repository/${encodeURIComponent(skillName)}`, {
+    method: "DELETE",
   });
 }
 
