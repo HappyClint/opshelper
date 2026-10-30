@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ChatModelOption } from "@opshelper/shared";
 
-import { IconClock, IconClose, IconPaperclip, IconSend, IconStop } from "./icons";
+import { IconClock, IconClose, IconFolder, IconPaperclip, IconSend, IconStop } from "./icons";
 import type { Attachment, MentionFile } from "./types";
 
 export function Composer({
@@ -19,6 +19,7 @@ export function Composer({
   onAutoApprovePermissionsChange,
   attachments,
   onAddFiles,
+  onRequestReference,
   onRemoveAttachment,
   onSearchFiles,
   onMention,
@@ -43,6 +44,7 @@ export function Composer({
   onAutoApprovePermissionsChange?: (enabled: boolean) => void;
   attachments: Attachment[];
   onAddFiles: (files: File[]) => void;
+  onRequestReference: () => void;
   onRemoveAttachment: (id: string) => void;
   onSearchFiles: (query: string) => Promise<MentionFile[]>;
   onMention: (file: MentionFile) => void;
@@ -56,8 +58,10 @@ export function Composer({
   focusToken?: number;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const composingRef = useRef(false);
   const keyboardHintId = useId();
   // The `@` autocomplete: `range` is the [start,end) span of the `@query` token
@@ -72,6 +76,24 @@ export function Composer({
   const uploading = attachments.some((a) => a.status === "uploading");
   const hasReady = attachments.some((a) => a.status === "ready");
   const canSend = (value.trim().length > 0 || hasReady) && !uploading && !blocked;
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (!attachMenuRef.current?.contains(event.target as Node)) {
+        setAttachMenuOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setAttachMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [attachMenuOpen]);
 
   // 单行起步、随内容自动增高（封顶交给 CSS max-height，超出后内部滚动）。
   useEffect(() => {
@@ -213,7 +235,9 @@ export function Composer({
                   {a.source === "mention" ? "@" : <IconPaperclip />}
                 </span>
               )}
-              <span className="opshelper-attach-name">{a.filename}</span>
+              <span className="opshelper-attach-name">
+                {a.mime === "inode/directory" ? `${a.filename}/` : a.filename}
+              </span>
               <button
                 className="opshelper-attach-remove"
                 onClick={() => onRemoveAttachment(a.id)}
@@ -276,15 +300,46 @@ export function Composer({
 
         {/* 工具条与输入框同壳：附件、模型切换靠左，发送靠右，不再单占一行。 */}
         <div className="opshelper-composer-tools">
-          <button
-            className="opshelper-attach-btn"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="上传文件"
-            title="上传文件"
-            disabled={blocked}
-          >
-            <IconPaperclip />
-          </button>
+          <div className="opshelper-attach-menu-wrap" ref={attachMenuRef}>
+            <button
+              className="opshelper-attach-btn"
+              type="button"
+              onClick={() => setAttachMenuOpen((open) => !open)}
+              aria-label="添加附件"
+              title="上传文件或引用工作区文件(夹)"
+              aria-haspopup="menu"
+              aria-expanded={attachMenuOpen}
+              disabled={blocked}
+            >
+              <IconPaperclip />
+            </button>
+            {attachMenuOpen ? (
+              <div className="opshelper-attach-menu" role="menu" aria-label="添加附件">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setAttachMenuOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  <IconPaperclip />
+                  <span>上传本机文件</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setAttachMenuOpen(false);
+                    onRequestReference();
+                  }}
+                >
+                  <IconFolder />
+                  <span>引用工作区文件(夹)</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
           <input
             ref={fileInputRef}
             type="file"

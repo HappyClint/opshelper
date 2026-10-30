@@ -167,6 +167,14 @@ export function IconPaperclip() {
 
 // 顶栏的「附件面板」开关：回形针在下方的输入栏已经是「上传文件」，
 // 同一个图形不能同时表示两种动作，这里用侧栏面板的形状。
+export function IconDownload() {
+  return (
+    <svg className="opshelper-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function IconSidePanel() {
   return (
     <svg className="opshelper-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">

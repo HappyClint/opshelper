@@ -101,7 +101,7 @@ async function bootstrap() {
   stopExecutionLoop = startExecutionLoop(app.log);
 }
 
-// Periodically prune stale chat-composer uploads (`.chat-uploads/`). The api
+// Periodically prune stale chat-composer uploads (`chat-uploads/`). The api
 // is the natural home for this: it's the process that bind-mounts the user data
 // path. Disabled when the TTL is 0.
 function startChatUploadSweep() {

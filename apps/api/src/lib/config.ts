@@ -17,7 +17,7 @@ const configSchema = z.object({
   dockerSocketPath: absolutePath.default("/var/run/docker.sock"),
   sessionCookieName: z.string().default("opshelper_session"),
   sessionTtlHours: z.coerce.number().positive().default(168),
-  chatUploadTtlHours: z.coerce.number().nonnegative().default(168),
+  chatUploadTtlHours: z.coerce.number().nonnegative().default(0),
   dataRoot: absolutePath.default("/data"),
   dataRootHost: absolutePath.default(path.resolve("data")),
   runtimeUid: z.coerce.number().int().positive().default(1000),

@@ -785,6 +785,20 @@
 .opshelper-attach-btn:hover { color: var(--g-accent-dark); background: var(--g-field); }
 .opshelper-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .opshelper-attach-btn .opshelper-icon { width: 19px; height: 19px; }
+.opshelper-attach-menu-wrap { position: relative; flex: 0 0 auto; }
+.opshelper-attach-menu {
+  position: absolute; z-index: 20; left: 0; bottom: calc(100% + 8px);
+  min-width: 190px; padding: 5px; border: 1px solid var(--g-line-strong);
+  border-radius: 10px; background: var(--g-bg); box-shadow: var(--g-shadow-md);
+}
+.opshelper-attach-menu button {
+  width: 100%; min-height: 36px; display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px; border: 0; border-radius: 7px; background: transparent;
+  color: var(--g-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.opshelper-attach-menu button:hover,
+.opshelper-attach-menu button:focus-visible { background: var(--g-field); outline: none; }
+.opshelper-attach-menu .opshelper-icon { width: 16px; height: 16px; color: var(--g-muted); }
 
 /* ---- @ mention menu ---- */
 .opshelper-mention-menu {
@@ -875,10 +889,30 @@
   padding: 7px 9px; border: 0; border-radius: 9px; background: transparent;
   color: var(--g-text); font: inherit; font-size: 13px; text-align: left;
 }
-button.opshelper-attachment-row { cursor: pointer; }
 .opshelper-attachment-row:hover { background: var(--g-field); }
 .opshelper-attachment-row > span:nth-child(2) { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opshelper-attachment-row > .opshelper-icon { color: var(--g-muted); }
+.opshelper-attachment-open {
+  min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px;
+  padding: 0; border: 0; background: transparent; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.opshelper-attachment-open > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opshelper-attachment-open > .opshelper-icon { color: var(--g-muted); }
+.opshelper-attachment-download {
+  flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px;
+  border-radius: 7px; color: var(--g-muted); text-decoration: none;
+}
+.opshelper-attachment-download:hover { background: var(--g-accent-soft); color: var(--g-accent-dark); }
+.opshelper-attachment-download .opshelper-icon { width: 16px; height: 16px; }
+.opshelper-attachment-delete {
+  flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px;
+  padding: 0; border: 0; border-radius: 7px; background: transparent;
+  color: var(--g-muted); cursor: pointer;
+}
+.opshelper-attachment-delete:hover:not(:disabled) { background: #fdecec; color: #b42318; }
+.opshelper-attachment-delete:disabled { opacity: 0.45; cursor: wait; }
+.opshelper-attachment-delete .opshelper-icon { width: 16px; height: 16px; }
 .opshelper-attachment-add {
   border: 1px solid var(--g-accent-line); border-radius: 7px; padding: 5px 9px;
   background: var(--g-accent-soft); color: var(--g-accent-dark); cursor: pointer;

@@ -57,6 +57,20 @@ test("file operations stay in data/users/<id>/workspace", async () => {
   await assert.rejects(stat(path.join(service.getUserDataRoot("user-1"), "renamed.txt")));
 });
 
+test("copyItem copies files and directory trees without overwriting", async () => {
+  const service = await loadFileService();
+  const root = service.getUserDataRoot("copy-user");
+  await service.createDirectory("copy-user", "source/nested");
+  await service.writeTextFile("copy-user", "source/nested/note.txt", "copied");
+
+  await service.copyItem("copy-user", "source/nested/note.txt", "destination");
+  assert.equal(await readFile(path.join(root, "destination", "note.txt"), "utf8"), "copied");
+  await service.copyItem("copy-user", "source", "destination");
+  assert.equal(await readFile(path.join(root, "destination", "source", "nested", "note.txt"), "utf8"), "copied");
+  await assert.rejects(service.copyItem("copy-user", "source", "destination"), (error: NodeJS.ErrnoException) => error.code === "EEXIST");
+  await assert.rejects(service.copyItem("copy-user", "source", "source/nested"), /Cannot copy a directory into itself/);
+});
+
 test("absolute paths are accepted only under /workspace", async () => {
   const { PathTraversalError, resolveUserPathSafe } = await loadFileService();
   assert.equal(
@@ -106,8 +120,8 @@ test("a symlink cannot replace a user root", async () => {
   );
 });
 
-test("listDirectory does not expose symlink targets", async () => {
-  const { ensureUserDataDir, getUserDataRoot, listDirectory } = await loadFileService();
+test("listDirectory and copyItem do not expose symlink targets", async () => {
+  const { PathTraversalError, copyItem, ensureUserDataDir, getUserDataRoot, listDirectory } = await loadFileService();
   await ensureUserDataDir("user-4");
   await writeFile(path.join(outsideRoot, "secret.txt"), "secret");
   await symlink(
@@ -115,6 +129,7 @@ test("listDirectory does not expose symlink targets", async () => {
     path.join(getUserDataRoot("user-4"), "secret-link"),
   );
   assert.deepEqual(await listDirectory("user-4", "", true), []);
+  await assert.rejects(copyItem("user-4", "secret-link", ""), PathTraversalError);
 });
 
 test("uploads never overwrite an existing file", async () => {

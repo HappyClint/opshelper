@@ -167,7 +167,7 @@ export async function prepareManagedRuntime(
   const releases = path.join(user.managed, "releases");
   const destination = path.join(releases, generation);
   await mkdir(releases, { recursive: true, mode: 0o700 });
-  for (const directory of [user.workspace, "files", "outputs", ".chat-uploads"].map((value, index) => index ? path.join(user.workspace, value) : value)) {
+  for (const directory of [user.workspace, "outputs", "chat-uploads"].map((value, index) => index ? path.join(user.workspace, value) : value)) {
     await mkdir(directory, { recursive: true });
   }
   for (const directory of ["data", "cache", "state"]) {

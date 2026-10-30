@@ -57,7 +57,7 @@ const server = http.createServer(async (req, res) => {
       else if (prompt.includes("E2E_CANCEL_PARENT")) call = ["subagent", { description: "Cancel child fixture", agent: "fixture-sub", prompt: "E2E_CANCEL" }];
       else if (prompt.includes("E2E_CANCEL")) call = ["shell", { command: "sleep 30" }];
       else if (prompt.includes("E2E_ATTACHMENT") && !attachmentVisible) {
-        const match = prompt.match(/\/workspace\/(?:files|\.chat-uploads)[^\s"\\]+\.txt/);
+        const match = prompt.match(/\/workspace\/chat-uploads[^\s"\\]+\.txt/);
         call = ["read", { path: match?.[0] ?? "/workspace/files/fixture.txt" }];
       }
     }
