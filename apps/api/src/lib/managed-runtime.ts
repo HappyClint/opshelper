@@ -3,6 +3,7 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } fro
 import path from "node:path";
 import { z } from "zod";
 
+import { withBuiltinInstructions } from "./builtin-instructions";
 import { getAssignedRuntimeDefinition, type AssignedRuntimeDefinition } from "./agent-service";
 import {
   getGlobalInstructions,
@@ -119,7 +120,7 @@ export async function prepareManagedRuntime(
   const [definition, modelConfiguration, globalInstructions] = await Promise.all([
     services.assignedRuntime(userId),
     services.modelConfiguration(),
-    services.globalInstructions(),
+    services.globalInstructions().then(withBuiltinInstructions),
   ]);
   if (!definition.agents.length) throw new RuntimeNotConfiguredError();
   const agentKeys = definition.agents.map((agent) => agent.key).sort();

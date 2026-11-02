@@ -45,6 +45,16 @@ RUN npm install -g @opencode/cli@2.0.27 \
 
 # Per-user writable workspace. Managed configuration is mounted read-only;
 # chat history and caches are persisted separately under /state.
+# 离线可视化：pele 把 Mermaid 渲染为 SVG，构建期预装；智能体通过
+# `pele-render in.mmd out.svg` 调用，运行时无需联网。
+USER root
+RUN npm install -g pele@1.13.0 \
+    --registry=https://registry.npmmirror.com \
+    --no-audit \
+    --no-fund
+COPY pele-render.mjs /usr/local/bin/pele-render
+RUN chmod 0755 /usr/local/bin/pele-render
+
 RUN mkdir -p /workspace /state /opt/opshelper/config/opencode \
   && chown node:node /workspace /state
 WORKDIR /workspace

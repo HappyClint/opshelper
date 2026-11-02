@@ -457,6 +457,13 @@
 /* 宽表格在自己的区域内横向滚动（包裹层由 markdown.ts 渲染），不把页面撑宽。 */
 .opshelper-table-scroll { margin: 12px 0; overflow-x: auto; overscroll-behavior-x: contain; }
 .opshelper-table-scroll > table { margin: 0; }
+.opshelper-diagram {
+  margin: 12px 0; overflow-x: auto; text-align: center;
+  --pele-bg: transparent; --pele-fg: var(--text); --pele-muted: var(--muted);
+  --pele-line: #6b7280; --pele-surface: #f6f7f9; --pele-surface-alt: #eef0f3;
+  --pele-border: var(--g-line-strong); --pele-accent: var(--accent);
+}
+.opshelper-markdown img.opshelper-workspace-image { display: block; max-width: 100%; height: auto; margin: 12px 0; background: #fff; border: 1px solid var(--g-line-strong); border-radius: 8px; }
 .opshelper-markdown table { width: 100%; min-width: 420px; border-collapse: collapse; font-size: 14px; }
 .opshelper-markdown th, .opshelper-markdown td { border: 1px solid var(--g-line-strong); padding: 9px 12px; text-align: left; vertical-align: top; }
 .opshelper-markdown th { background: #f6f7f9; font-weight: 600; }
