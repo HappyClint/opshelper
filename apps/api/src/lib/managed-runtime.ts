@@ -3,6 +3,7 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } fro
 import path from "node:path";
 import { z } from "zod";
 
+import { withBuiltinInstructions } from "./builtin-instructions";
 import { getAssignedRuntimeDefinition, type AssignedRuntimeDefinition } from "./agent-service";
 import {
   getGlobalInstructions,
@@ -119,7 +120,7 @@ export async function prepareManagedRuntime(
   const [definition, modelConfiguration, globalInstructions] = await Promise.all([
     services.assignedRuntime(userId),
     services.modelConfiguration(),
-    services.globalInstructions(),
+    services.globalInstructions().then(withBuiltinInstructions),
   ]);
   if (!definition.agents.length) throw new RuntimeNotConfiguredError();
   const agentKeys = definition.agents.map((agent) => agent.key).sort();
@@ -167,7 +168,7 @@ export async function prepareManagedRuntime(
   const releases = path.join(user.managed, "releases");
   const destination = path.join(releases, generation);
   await mkdir(releases, { recursive: true, mode: 0o700 });
-  for (const directory of [user.workspace, "files", "outputs", ".chat-uploads"].map((value, index) => index ? path.join(user.workspace, value) : value)) {
+  for (const directory of [user.workspace, "outputs", "chat-uploads"].map((value, index) => index ? path.join(user.workspace, value) : value)) {
     await mkdir(directory, { recursive: true });
   }
   for (const directory of ["data", "cache", "state"]) {

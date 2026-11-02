@@ -1721,7 +1721,7 @@ select:focus-visible {
 
 .file-tree-row {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 76px;
+  grid-template-columns: 22px minmax(0, 1fr) 190px;
   gap: 8px;
   align-items: center;
   min-height: 38px;
@@ -1741,6 +1741,10 @@ select:focus-visible {
 .file-tree-row-selected,
 .file-tree-row-checked {
   background: rgba(9, 122, 79, 0.07);
+}
+
+.file-tree-row-cut {
+  opacity: 0.55;
 }
 
 .file-tree-row[draggable="true"] {
@@ -1891,7 +1895,8 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
+  gap: 8px;
+  padding-right: 28px;
 }
 
 .file-row-quick-action {
@@ -5248,7 +5253,129 @@ select:focus-visible {
   .user-files-page .file-manager-toolbar { flex: 1 1 100%; justify-content: flex-end; }
   .user-files-page .file-manager-hidden span { display: none; }
   .user-files-page .file-manager-hidden { padding: 6px 9px; }
-  .file-tree-row { padding: 0 10px; grid-template-columns: 22px minmax(0, 1fr) 68px; }
+  .file-tree-row { padding: 0 10px; grid-template-columns: 22px minmax(0, 1fr) 150px; }
   .file-tree-meta .file-tree-sep,
   .file-tree-meta .file-tree-date { display: none; }
 }
+
+.file-new-menu { position: relative; }
+.file-new-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 150px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--border, #dfe5e2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.file-new-menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+}
+.file-new-menu-list button:hover { background: rgba(9, 122, 79, 0.08); }
+.file-new-menu-list svg { width: 15px; height: 15px; }
+
+.file-view-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+}
+.file-view-tabs { display: flex; gap: 4px; }
+.file-view-tabs button {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--g-muted, var(--muted));
+  font-size: 13px;
+  cursor: pointer;
+}
+.file-view-tabs button.is-active {
+  background: rgba(9, 122, 79, 0.12);
+  color: #07603d;
+  font-weight: 600;
+}
+.file-search-input { width: 220px; max-width: 45%; min-height: 30px; padding: 4px 10px; font-size: 13px; }
+
+.file-head-bulk { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.file-head-bulk strong { margin-right: 6px; color: var(--g-text, inherit); font-size: 13px; }
+.file-head-bulk button {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--g-muted, var(--muted));
+  font-size: 13px;
+  cursor: pointer;
+}
+.file-head-bulk button:hover { background: rgba(9, 122, 79, 0.1); color: #07603d; }
+.file-head-bulk button.is-danger:hover { background: rgba(200, 40, 40, 0.1); color: #b42318; }
+
+.file-row-star.is-favorite { color: #d99a00; opacity: 1; visibility: visible; }
+
+.file-dropzone {
+  margin-top: 8px;
+  padding: 18px;
+  border: 1px dashed var(--border, #cfd8d4);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--g-muted, var(--muted));
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+}
+.file-dropzone:hover,
+.file-dropzone.is-over {
+  border-color: #097a4f;
+  background: rgba(9, 122, 79, 0.06);
+  color: #07603d;
+}
+
+.file-manager-with-sidebar {
+  flex-direction: row;
+}
+.file-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 168px;
+  padding: 12px 10px;
+  border-right: 1px solid var(--g-line, var(--line));
+}
+.file-sidebar button {
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--g-text, inherit);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.file-sidebar button:hover { background: rgba(9, 122, 79, 0.06); }
+.file-sidebar button.is-active {
+  background: rgba(9, 122, 79, 0.12);
+  color: #07603d;
+  font-weight: 600;
+}
+.file-manager-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.file-view-bar { justify-content: flex-end; }

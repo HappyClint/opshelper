@@ -22,7 +22,11 @@ import type {
   ScheduleRunAnswerResponse,
   SchedulesResponse,
   SkillPackageImport,
+  SkillRepositorySkillSummary,
+  SkillRepositorySnapshot,
 } from "@opshelper/shared";
+
+export type AgentApiScope = "admin" | "user";
 
 async function parseResponse<T>(response: Response) {
   if (response.status === 204) {
@@ -100,30 +104,66 @@ export async function listUsers(query = "") {
   });
 }
 
-export async function listAgents() {
-  return fetchJson<AdminAgentsSnapshot>("/v1/admin/agents", {
+export async function listAgents(scope: AgentApiScope = "admin") {
+  const path = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
+  return fetchJson<AdminAgentsSnapshot>(path, {
     cache: "no-store",
   });
 }
 
-export async function getAgent(key: string) {
+export async function getAgent(key: string, scope: AgentApiScope = "admin") {
+  const basePath = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
   return fetchJson<{ agent: AgentDetail }>(
-    `/v1/admin/agents/${encodeURIComponent(key)}`,
+    `${basePath}/${encodeURIComponent(key)}`,
     { cache: "no-store" },
   );
 }
 
-export async function importAgentSkillPackage(file: File) {
+export async function importAgentSkillPackage(file: File, scope: AgentApiScope = "admin") {
   const body = new FormData();
   body.append("file", file);
-  return fetchJson<SkillPackageImport>("/v1/admin/agents/skill-package", {
+  const path = scope === "admin"
+    ? "/v1/admin/agents/skill-package"
+    : "/v1/users/me/agent-catalog/skill-package";
+  return fetchJson<SkillPackageImport>(path, {
     method: "POST",
     body,
   });
 }
 
-export async function createAgent(input: AgentDirectoryRequest) {
-  return fetchJson<{ agent: AgentDetail }>("/v1/admin/agents", {
+export async function listSkillRepository() {
+  return fetchJson<SkillRepositorySnapshot>("/v1/skill-repository", {
+    cache: "no-store",
+  });
+}
+
+export async function getSkillRepositorySkill(skillName: string) {
+  return fetchJson<SkillPackageImport>(`/v1/skill-repository/${encodeURIComponent(skillName)}`, {
+    cache: "no-store",
+  });
+}
+
+export async function createSkillRepositorySkill(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return fetchJson<{ skill: SkillRepositorySkillSummary }>(
+    "/v1/admin/skill-repository/skill-package",
+    {
+      method: "POST",
+      body,
+    },
+  );
+}
+
+export async function deleteSkillRepositorySkill(skillName: string) {
+  return fetchJson<void>(`/v1/admin/skill-repository/${encodeURIComponent(skillName)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function createAgent(input: AgentDirectoryRequest, scope: AgentApiScope = "admin") {
+  const path = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
+  return fetchJson<{ agent: AgentDetail }>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -133,9 +173,11 @@ export async function createAgent(input: AgentDirectoryRequest) {
 export async function updateAgent(
   key: string,
   input: Pick<AgentDirectoryRequest, "files" | "binaryFiles">,
+  scope: AgentApiScope = "admin",
 ) {
+  const basePath = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
   return fetchJson<{ agent: AgentDetail }>(
-    `/v1/admin/agents/${encodeURIComponent(key)}`,
+    `${basePath}/${encodeURIComponent(key)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -144,15 +186,21 @@ export async function updateAgent(
   );
 }
 
-export async function deleteAgent(key: string) {
-  return fetchJson<void>(`/v1/admin/agents/${encodeURIComponent(key)}`, {
+export async function deleteAgent(key: string, scope: AgentApiScope = "admin") {
+  const basePath = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
+  return fetchJson<void>(`${basePath}/${encodeURIComponent(key)}`, {
     method: "DELETE",
   });
 }
 
-export async function setAgentEnabled(key: string, isEnabled: boolean) {
+export async function setAgentEnabled(
+  key: string,
+  isEnabled: boolean,
+  scope: AgentApiScope = "admin",
+) {
+  const basePath = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
   return fetchJson<{ agent: AgentDetail }>(
-    `/v1/admin/agents/${encodeURIComponent(key)}`,
+    `${basePath}/${encodeURIComponent(key)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -161,9 +209,10 @@ export async function setAgentEnabled(key: string, isEnabled: boolean) {
   );
 }
 
-export async function checkAgent(key: string) {
+export async function checkAgent(key: string, scope: AgentApiScope = "admin") {
+  const basePath = scope === "admin" ? "/v1/admin/agents" : "/v1/users/me/agent-catalog";
   return fetchJson<{ agent: AgentDetail }>(
-    `/v1/admin/agents/${encodeURIComponent(key)}/check`,
+    `${basePath}/${encodeURIComponent(key)}/check`,
     { method: "POST" },
   );
 }

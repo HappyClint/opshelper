@@ -106,10 +106,11 @@ OPSHELPER_WEB_IMAGE=opshelper-web:local
 python3 scripts/opshelper.py bootstrap
 python3 scripts/opshelper.py up
 python3 scripts/opshelper.py status
+python3 scripts/opshelper.py down
 curl -f http://127.0.0.1:8080/health
 ```
 
-`bootstrap` 执行迁移，并仅在所有业务表为空时创建管理员；已有业务数据会被拒绝。`up` 只执行迁移和启动服务。**升级、重启和备份恢复只运行 `up`，不要运行 `bootstrap` 或 seed。**
+`bootstrap` 执行迁移，并仅在所有业务表为空时创建管理员；已有业务数据会被拒绝。`up` 只执行迁移和启动服务。`down`（同义命令 `stop`）会停止平台 Compose 容器和当前部署目录下的用户运行容器。**升级、重启和备份恢复只运行 `up`，不要运行 `bootstrap` 或 seed。**
 
 访问 [http://127.0.0.1:8080/gateway/](http://127.0.0.1:8080/gateway/)。管理员账号为 `admin`，初始密码保存在本机 `.env` 的 `OPSHELPER_ADMIN_PASSWORD` 中。
 

@@ -29,3 +29,26 @@ test("代码块中的 br 保持代码文本", () => {
 
   assert.match(rendered, /&lt;br&gt;/);
 });
+
+test("mermaid 代码块渲染为 SVG 图表", () => {
+  const rendered = renderAssistantMarkdown("```mermaid\nflowchart LR\n  A[开始] --> B[结束]\n```");
+
+  assert.match(rendered, /<div class="opshelper-diagram"><svg/);
+  assert.doesNotMatch(rendered, /<pre>/);
+});
+
+test("无法解析的 mermaid 代码块回退为普通代码块", () => {
+  const rendered = renderAssistantMarkdown("```mermaid\nflowchart LR\n  A -->\n```");
+
+  assert.match(rendered, /<pre>/);
+  assert.doesNotMatch(rendered, /<svg/);
+});
+
+test("工作区图片改写为内联下载地址，且拒绝路径穿越", () => {
+  const ok = renderAssistantMarkdown("![流程](/workspace/outputs/a.svg)");
+  assert.match(ok, /src="\/v1\/users\/me\/files\/download\?path=%2Fworkspace%2Foutputs%2Fa\.svg&amp;inline=1"/);
+  assert.match(ok, /class="opshelper-workspace-image"/);
+
+  const bad = renderAssistantMarkdown("![x](/workspace/../etc/passwd)");
+  assert.doesNotMatch(bad, /files\/download/);
+});

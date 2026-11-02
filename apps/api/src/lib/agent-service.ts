@@ -79,6 +79,7 @@ export class AgentServiceError extends Error {
 export interface AgentDirectoryInput {
   key: string;
   files: Record<string, string | Uint8Array>;
+  ownerId?: string | null;
 }
 
 export interface AgentDependencyCatalog {
@@ -536,6 +537,7 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
         record = await dependencies.prisma.agent.create({
           data: {
             key,
+            ownerId: input.ownerId,
             displayName: validated.displayName,
             description: validated.description,
             mode: validated.mode,
@@ -547,6 +549,15 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
         throw error;
       }
       return finishWrite(record.id, key, staging, validated);
+    });
+  }
+
+  async function previewAgent(input: AgentDirectoryInput) {
+    const key = assertValidAgentKey(input.key);
+    return withKeyLock(key, async () => {
+      const { staging, validated } = await prepare({ ...input, key });
+      await rm(staging, { recursive: true, force: true });
+      return validated;
     });
   }
 
@@ -713,15 +724,27 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
     return dependencies.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, isActive: true } });
       if (!user?.isActive) throw new AgentServiceError("用户不存在或已停用", 404);
-      const agents = await tx.agent.findMany({ where: { id: { in: desiredIds } } });
+      const current = await tx.userAgent.findMany({ where: { userId }, select: { agentId: true } });
+      const currentIds = current.map((item) => item.agentId).sort();
+      const agents = await tx.agent.findMany({
+        where: {
+          id: { in: desiredIds },
+          OR: [
+            { ownerId: null },
+            { ownerId: userId },
+            { owner: { is: { role: "ADMIN" } } },
+          ],
+        },
+      });
       if (agents.length !== desiredIds.length) throw new AgentServiceError("分配清单包含不存在的 Agent");
-      const invalid = agents.find((agent) => !agent.isEnabled || agent.checkStatus !== "READY");
+      const newlyAssigned = new Set(desiredIds.filter((id) => !currentIds.includes(id)));
+      const invalid = agents.find((agent) =>
+        newlyAssigned.has(agent.id) && (!agent.isEnabled || agent.checkStatus !== "READY"),
+      );
       if (invalid) throw new AgentServiceError(`Agent「${invalid.key}」未启用或检查未通过`);
       if (agents.length && agents.every((agent) => agent.mode === "subagent")) {
         throw new AgentServiceError("至少需要分配一个 primary 或 all 模式的主智能体");
       }
-      const current = await tx.userAgent.findMany({ where: { userId }, select: { agentId: true } });
-      const currentIds = current.map((item) => item.agentId).sort();
       if (currentIds.length === desiredIds.length && currentIds.every((id, index) => id === desiredIds[index])) {
         return tx.userAgent.findMany({ where: { userId }, include: { agent: true }, orderBy: { agent: { key: "asc" } } });
       }
@@ -787,7 +810,10 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
     const definitions = [];
     for (const assignment of user.agents.sort((a, b) => a.agent.key.localeCompare(b.agent.key))) {
       const agent = assignment.agent;
-      if (!agent.isEnabled || agent.checkStatus !== "READY" || !agent.contentHash) {
+      if (!agent.isEnabled) {
+        continue;
+      }
+      if (agent.checkStatus !== "READY" || !agent.contentHash) {
         throw new AgentServiceError(`Agent「${agent.key}」未启用或检查未通过`, 409);
       }
       const validated = await validateDirectory(agent.key, await assignedSourceDirectory(userId, agent.key), await currentDependencyCatalog());
@@ -805,6 +831,7 @@ export function createAgentService(dependencies: AgentServiceDependencies) {
   }
 
   return {
+    previewAgent,
     createAgent,
     updateAgent,
     deleteAgent,
@@ -851,6 +878,7 @@ const defaultService = createAgentService({
 });
 
 export const createAgent = defaultService.createAgent;
+export const previewAgent = defaultService.previewAgent;
 export const updateAgent = defaultService.updateAgent;
 export const deleteAgent = defaultService.deleteAgent;
 export const setAgentEnabled = defaultService.setAgentEnabled;

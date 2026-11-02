@@ -7,7 +7,7 @@ import { toast } from "@/lib/toast";
 
 const API_BASE = "/v1/admin/opencode/models";
 // 与后端 MODEL_ID_RE 一致：厂商模型 id 常见字符（点/冒号/斜杠），不含空白。
-const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const MODEL_ID_RE = /^[A-Za-z0-9._:/-]{1,128}$/;
 
 interface ModelRow {
   /** 稳定的行 key（新增行没有天然 id，用它驱动 React 列表）。 */

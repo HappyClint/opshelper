@@ -57,7 +57,7 @@ const ACTIVE_STATUSES: ExecutionSummary["status"][] = [
 ];
 const CHAT_MODEL_KEY = "opshelper:model";
 const CHAT_AUTO_APPROVE_KEY = "opshelper:auto-approve-permissions";
-const CHAT_UPLOAD_DIR = ".chat-uploads";
+const CHAT_UPLOAD_DIR = "chat-uploads";
 const SCHEDULE_DRAFT_KEY = "opshelper:schedule-draft";
 
 function createClientId() {
@@ -647,7 +647,7 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
           id: createClientId(),
           path: file.path,
           filename: file.filename,
-          mime: guessMime(file.filename),
+          mime: file.type === "directory" ? "inode/directory" : guessMime(file.filename),
           status: "ready",
           source: "mention",
         }]);
@@ -667,6 +667,7 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
         rel: file.path.replace(/^\/workspace\/?/, ""),
         path: file.path,
         filename: file.name,
+        type: file.type,
       }));
   }, [directory]);
 
@@ -883,6 +884,7 @@ export function ChatApp({ directory, defaultModel, models = [] }: ChatAppProps) 
             }}
             attachments={attachments}
             onAddFiles={addFiles}
+            onRequestReference={() => setShowAttachments(true)}
             onRemoveAttachment={(id) => setAttachments((current) =>
               current.filter((item) => item.id !== id))}
             onSearchFiles={searchFiles}

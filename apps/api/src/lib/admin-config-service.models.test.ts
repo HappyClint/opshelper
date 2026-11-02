@@ -139,6 +139,25 @@ test("保留模型条目上手工添加的额外字段", async () => {
   assert.equal(cfg.provider.custom.models["qwen-plus"].name, "千问");
 });
 
+test("模型 ID 支持包含和前缀斜杠", async () => {
+  const { updateModelSettings, getModelSettings, getChatModels } = await service();
+  await updateModelSettings({
+    baseURL: "https://gw.example.com/v1",
+    apiKey: "",
+    models: [{ id: "/data/chatgpt", name: "" }],
+    defaultModel: "/data/chatgpt",
+  });
+  const settings = await getModelSettings();
+  assert.equal(settings.defaultModel, "/data/chatgpt");
+  assert.deepEqual(settings.models, [{ id: "/data/chatgpt", name: "/data/chatgpt" }]);
+
+  const view = await getChatModels();
+  assert.equal(view.defaultModel, "custom//data/chatgpt");
+  assert.deepEqual(view.models, [
+    { id: "/data/chatgpt", name: "/data/chatgpt", model: "custom//data/chatgpt" },
+  ]);
+});
+
 test("非法输入被拒绝", async () => {
   const { updateModelSettings, AdminConfigError } = await service();
   const base = {

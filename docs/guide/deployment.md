@@ -2,7 +2,7 @@
 
 x86 离线物理机部署请使用[离线部署文档](offline-amd64.md)和发布包内的 Compose 配置，直接执行 `docker load`、`docker-compose` 命令，无需部署脚本。下文用于持有源码的开发机及既有 `scripts/opshelper.py` 部署。
 
-当前版本面向全新单机部署。保持 TypeScript / Fastify / Next.js / PostgreSQL 16 / Docker；每用户一个固定 OpenCode 2.0.27 容器。管理员分配智能体，用户使用个人对话、文件和定时任务。
+当前版本面向全新单机部署。保持 TypeScript / Fastify / Next.js / PostgreSQL 16 / Docker；每用户一个固定 OpenCode 2.0.27 容器。管理员分配智能体，用户可使用个人对话、文件和定时任务，并可在工作台创建智能体。
 
 ## 从空目录安装
 
@@ -24,6 +24,7 @@ python3 scripts/opshelper.py init --project opshelper --port 8080
 python3 scripts/opshelper.py bootstrap
 python3 scripts/opshelper.py up
 python3 scripts/opshelper.py status
+python3 scripts/opshelper.py down
 ```
 
 `init` 拒绝覆盖已有 `.env` 或非空数据目录。它在当前部署目录生成 `.env` 和 `data/`，写入宿主绝对路径、当前 UID/GID、随机数据库密码和随机管理员密码。配置文件权限为 600，不输出密码。账号为 `admin`，初始密码查看本机 `.env` 的 `OPSHELPER_ADMIN_PASSWORD`。不创建演示用户。`bootstrap` 仅允许空数据库；已有任意业务数据时拒绝运行。升级、重启和恢复不运行 seed，也不会重置管理员密码。
@@ -37,6 +38,7 @@ python3 scripts/opshelper.py --env-file /absolute/deployment/.env up
 ```
 
 首次安装：`bootstrap` 启动 PostgreSQL、执行迁移，再创建初始管理员；`up` 执行迁移并启动 API、worker、web、nginx。已有实例仅执行 `up`，不会初始化数据。普通 API 重启不执行 `db push`，不修改 schema。迁移失败时不会启动新应用。管理员首次登录后配置模型、创建智能体、创建用户并分配，详见[管理员手册](admin.md)。未配置模型或未分配智能体时不能聊天，这是可见配置状态。
+需要停机维护时，可执行 `down`（同义命令 `stop`）停止平台 Compose 容器和当前部署目录的用户运行容器。
 
 ## 数据、网络与资源
 
@@ -63,7 +65,7 @@ deployment/
 
 ## 更新与重启
 
-已有 OpenCode 1 开发实例必须先按 [OpenCode 2 切换说明](opencode-2-migration.md)处理旧会话关联；不能只更新镜像标签后直接启动。V2 状态保存在每用户 `state/v2/`，与旧状态分离。后续并发修复包含 `20261013000100_schedule_manual_concurrency` 索引迁移，升级由 `up` 应用，不运行 seed；迁移前先停写备份并保留原镜像。
+已有 OpenCode 1 开发实例必须先按 [OpenCode 2 切换说明](opencode-2-migration.md)处理旧会话关联；不能只更新镜像标签后直接启动。V2 状态保存在每用户 `state/v2/`，与旧状态分离。后续并发修复包含 `20261013000100_schedule_manual_concurrency` 索引迁移；个人智能体功能包含 `20261014000100_personal_agent_ownership` 所有者迁移。升级由 `up` 应用，不运行 seed；迁移前先停写备份并保留原镜像。
 
 本版本只支持新 schema 的部署，不接管旧系统数据库或 volume。升级前使用[备份恢复](backup-restore.md)停写备份，保留完整旧镜像和发布目录；完成后重新 `up`。不要将当前迁移直接用于改造前数据库，也不要使用 `prisma db push` 作为部署升级命令。
 

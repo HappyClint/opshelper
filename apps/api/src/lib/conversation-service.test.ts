@@ -73,6 +73,20 @@ test("V2 无附件提示维持空文件列表", () => {
   assert.ok(!payload.text.includes("我上传了以下文件"));
 });
 
+test("V2 文件夹引用会作为工作区路径提示，而不会作为文件载荷发送", () => {
+  const payload = executionPromptPayload({
+    id: "execution-directory",
+    inputText: "检查目录",
+    source: ExecutionSource.CHAT,
+    attachments: [{ path: "/workspace/docs", filename: "docs", mime: "inode/directory" }],
+    promptMarker: "prompt-directory",
+  });
+
+  assert.deepEqual(payload.files, []);
+  assert.ok(payload.text.includes("文件或文件夹"));
+  assert.ok(payload.text.includes("docs（/workspace/docs）"));
+});
+
 test("会话分支边界只接受当前历史里的用户消息，包括附件消息", () => {
   const messages = [
     { info: { id: "msg-first", role: "user" }, parts: [{ type: "text", text: "前文" }] },

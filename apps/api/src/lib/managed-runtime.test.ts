@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withBuiltinInstructions } from "./builtin-instructions";
 import test from "node:test";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -83,8 +84,9 @@ test("装配只包含获配智能体，同一内容复用代次，重建保留�
     const parsed = JSON.parse(await readFile(path.join(release, "config", "opencode", "opencode.json"), "utf8"));
     assert.equal(
       await readFile(path.join(release, "config", "opencode", "AGENTS.md"), "utf8"),
-      "所有交付文件必须保存在 /workspace。\n",
+      withBuiltinInstructions("所有交付文件必须保存在 /workspace。\n"),
     );
+    assert.match(await readFile(path.join(release, "config", "opencode", "AGENTS.md"), "utf8"), /pele-render/);
     assert.equal(parsed.small_model, parsed.model);
     assert.equal(parsed.experimental.subagent_depth, 24);
     assert.equal(parsed.experimental.continue_loop_on_deny, undefined);

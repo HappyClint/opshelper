@@ -148,7 +148,7 @@ export function resolveExecutionPromptText(
 
 export function executionInteractionGuidance(source: ExecutionSource) {
   if (source !== ExecutionSource.CHAT) return "";
-  return "平台交互要求：只有完成当前请求确实需要读取环境或执行操作时才调用工具；身份、能力和使用方式等说明性问题不要先检查工作区，请直接回答，优先控制在 3 至 6 个要点，避免重复自我介绍。平台会根据真实运行事件展示操作记录；被问及工具或技能使用情况时不得凭记忆补造未发生的调用，可提示用户查看操作记录。委派子智能体时准确保留用户原意；向智能体发送问候表示让该智能体接收并回复问候，不得擅自改写为 HTTP 请求或向外部服务发送消息。";
+  return "平台交互要求：需要保存生成的文件或目录时，一律写入 /workspace/outputs/ 下（可自行创建子目录），不要直接写在 /workspace 根目录；用户上传的文件位于 /workspace/chat-uploads/。只有完成当前请求确实需要读取环境或执行操作时才调用工具；身份、能力和使用方式等说明性问题不要先检查工作区，请直接回答，优先控制在 3 至 6 个要点，避免重复自我介绍。平台会根据真实运行事件展示操作记录；被问及工具或技能使用情况时不得凭记忆补造未发生的调用，可提示用户查看操作记录。委派子智能体时准确保留用户原意；向智能体发送问候表示让该智能体接收并回复问候，不得擅自改写为 HTTP 请求或向外部服务发送消息。";
 }
 
 function textOfParts(parts: unknown): string {
@@ -827,10 +827,15 @@ export async function validateConversationAttachments(
     }
     const resolved = await resolveUserPathSafe(userId, attachment.path);
     const info = await lstat(resolved).catch(() => null);
-    if (!info?.isFile() || info.isSymbolicLink()) {
+    const isDirectoryReference = attachment.mime === "inode/directory";
+    if (
+      !info ||
+      info.isSymbolicLink() ||
+      (isDirectoryReference ? !info.isDirectory() : !info.isFile())
+    ) {
       throw new ConversationServiceError(`附件不存在：${attachment.filename}`);
     }
-    if (includeDigests) {
+    if (includeDigests && !isDirectoryReference) {
       digests.push({ path: attachment.path, ...await fileDigest(resolved) });
     }
   }
@@ -955,7 +960,7 @@ export function executionPromptPayload(
     // Include the actual path even when V2 also embeds a viewable attachment.
     // Providers can otherwise ask the read tool for /workspace/<filename>.
     const lines = attachments.map((file) => `- ${file.filename}（${file.path}）`).join("\n");
-    const note = `我上传了以下文件，请读取并处理：\n${lines}`;
+    const note = `请读取并处理以下文件或文件夹：\n${lines}`;
     text = text ? `${text}\n\n${note}` : note;
   }
   if (plannedCollaborators.length) {

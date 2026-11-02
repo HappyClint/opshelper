@@ -17,4 +17,5 @@ export interface MentionFile {
   rel: string; // path relative to the workspace root (display)
   path: string; // absolute path inside the container
   filename: string;
+  type?: "file" | "directory";
 }

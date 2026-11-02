@@ -178,6 +178,7 @@ export interface AgentSummary {
   checkError: string | null;
   checkedAt: string | null;
   assignmentCount: number;
+  canManage: boolean;
 }
 
 export interface AgentDetail extends AgentSummary {
@@ -220,6 +221,17 @@ export interface SkillPackageImport {
   skillName: string;
   files: Record<string, string>;
   binaryFiles: Record<string, string>;
+}
+
+export interface SkillRepositorySkillSummary {
+  name: string;
+  description: string;
+  fileCount: number;
+  updatedAt: string;
+}
+
+export interface SkillRepositorySnapshot {
+  skills: SkillRepositorySkillSummary[];
 }
 
 export type ExecutionStatus =

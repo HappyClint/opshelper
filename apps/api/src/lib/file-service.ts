@@ -1,5 +1,6 @@
-import { createReadStream, type ReadStream } from "node:fs";
+import { constants, createReadStream, type ReadStream } from "node:fs";
 import {
+  copyFile,
   lstat,
   mkdir,
   open,
@@ -378,6 +379,54 @@ export async function moveItem(
   await rename(resolvedSource, resolvedDest);
 }
 
+export async function copyItem(
+  userId: string,
+  sourcePath: string,
+  targetDir: string,
+): Promise<void> {
+  const resolvedSource = await resolveUserPathSafe(userId, sourcePath);
+  const resolvedTargetDir = await resolveUserPathSafe(userId, targetDir || "");
+  const resolvedDest = path.join(resolvedTargetDir, path.basename(resolvedSource));
+  const root = getUserDataRoot(userId);
+
+  if (!resolvedDest.startsWith(`${root}/`) && resolvedDest !== root) {
+    throw new PathTraversalError();
+  }
+
+  const sourceStats = await lstat(resolvedSource);
+  if (
+    sourceStats.isDirectory() &&
+    (resolvedDest === resolvedSource || resolvedDest.startsWith(`${resolvedSource}/`))
+  ) {
+    const error = new Error("Cannot copy a directory into itself") as NodeJS.ErrnoException;
+    error.code = "EINVAL";
+    throw error;
+  }
+
+  await mkdir(resolvedTargetDir, { recursive: true });
+
+  async function copyEntry(source: string, destination: string): Promise<void> {
+    const info = await lstat(source);
+    if (info.isSymbolicLink()) throw new PathTraversalError();
+    if (info.isDirectory()) {
+      await mkdir(destination);
+      try {
+        for (const name of await readdir(source)) {
+          await copyEntry(path.join(source, name), path.join(destination, name));
+        }
+      } catch (error) {
+        await rm(destination, { recursive: true, force: true });
+        throw error;
+      }
+      return;
+    }
+    if (!info.isFile()) throw new Error("Unsupported file type");
+    await copyFile(source, destination, constants.COPYFILE_EXCL);
+  }
+
+  await copyEntry(resolvedSource, resolvedDest);
+}
+
 function writeOctal(
   header: Buffer,
   value: number,
@@ -633,11 +682,11 @@ export async function removeUserDataDir(userId: string): Promise<void> {
 
 // Hidden staging folder (under each user's workspace root) that the chat
 // composer uploads land in. Must match CHAT_UPLOAD_DIR on the web side.
-export const CHAT_UPLOAD_DIR_NAME = ".chat-uploads";
+export const CHAT_UPLOAD_DIR_NAME = "chat-uploads";
 
 /**
  * Prune chat-composer uploads older than `ttlHours` across every user's
- * `.chat-uploads/` staging folder. opencode never stages these itself — they
+ * `chat-uploads/` staging folder. opencode never stages these itself — they
  * exist only because we need a real on-disk file behind each `file://` prompt
  * part — so the api owns their lifecycle. Best-effort: a failure on one user's
  * folder never aborts the others. Returns the number of entries removed.

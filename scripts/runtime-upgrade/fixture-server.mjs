@@ -54,7 +54,7 @@ const server = http.createServer(async (req, res) => {
       else if (prompt.includes("E2E_OUTPUT")) call = ["bash", { command: "printf OUTPUT_UPGRADE_OK > /workspace/files/upgrade-result.txt", description: "Write the fixture result" }];
       else if (prompt.includes("E2E_CANCEL")) call = ["bash", { command: "sleep 30", description: "Wait for cancellation" }];
       else if (prompt.includes("E2E_ATTACHMENT")) {
-        const match = prompt.match(/\/workspace\/(?:files|\.chat-uploads)[^\s"\\]+\.txt/);
+        const match = prompt.match(/\/workspace\/chat-uploads[^\s"\\]+\.txt/);
         call = ["read", { filePath: match?.[0] ?? "/workspace/files/fixture.txt" }];
       }
     }

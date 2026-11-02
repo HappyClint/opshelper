@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
   BinaryFileError,
+  copyItem,
   createDirectory,
   createEmptyFile,
   deleteItem,
@@ -60,6 +61,11 @@ const moveBodySchema = z.object({
   targetName: z.string().min(1).optional(),
 });
 
+const copyBodySchema = z.object({
+  sourcePath: z.string().min(1),
+  targetDir: z.string(),
+});
+
 type UserIdResolver = (
   request: FastifyRequest,
   reply: FastifyReply,
@@ -97,6 +103,9 @@ function handleFileError(error: unknown, reply: FastifyReply) {
   }
   if (err.code === "EEXIST") {
     return reply.code(409).send({ message: "Destination already exists" });
+  }
+  if (err.code === "EINVAL") {
+    return reply.code(400).send({ message: error instanceof Error ? error.message : "Invalid file operation" });
   }
 
   throw error;
@@ -323,6 +332,23 @@ function registerScopedFileRoutes(
         parsed.data.targetDir,
         parsed.data.targetName,
       );
+      return { success: true };
+    } catch (error) {
+      return handleFileError(error, reply);
+    }
+  });
+
+  app.post(`${prefix}/copy`, async (request, reply) => {
+    const userId = await resolveUserId(request, reply);
+    if (!userId) return;
+
+    const parsed = copyBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ message: "Invalid request body" });
+    }
+
+    try {
+      await copyItem(userId, parsed.data.sourcePath, parsed.data.targetDir);
       return { success: true };
     } catch (error) {
       return handleFileError(error, reply);

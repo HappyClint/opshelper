@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { parentPath, rootPath, type FileInfo } from "../file-manager/utils";
-import { IconChevron, IconClose, IconFolder, IconPaperclip } from "./icons";
+import { parentPath, parseJson, rootPath, type FileInfo } from "../file-manager/utils";
+import { confirm as confirmDialog } from "@/components/ui/dialog-host";
+import { toast } from "@/lib/toast";
+import { IconChevron, IconClose, IconDownload, IconFolder, IconPaperclip, IconTrash } from "./icons";
 import type { MentionFile } from "./types";
 
 // 与 chat.css 的 960px 断点保持一致：窄屏时附件面板是覆盖式浮层，
@@ -27,6 +29,7 @@ export function AttachmentPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [overlay, setOverlay] = useState(false);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -48,6 +51,36 @@ export function AttachmentPanel({
       setLoading(false);
     }
   }, []);
+
+  async function deleteFile(file: FileInfo) {
+    const isDirectory = file.type === "directory";
+    const confirmed = await confirmDialog({
+      title: `删除${isDirectory ? "文件夹" : "文件"} ${file.name}`,
+      description: isDirectory
+        ? "该文件夹及其全部子内容会被删除，且无法恢复。"
+        : "该文件会被删除，且无法恢复。",
+      confirmLabel: "删除",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    setDeletingPath(file.path);
+    try {
+      await parseJson<{ success: boolean }>(
+        await fetch("/v1/users/me/files/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: file.path }),
+        }),
+      );
+      toast.success(isDirectory ? "文件夹已删除" : "文件已删除");
+      await load(path);
+    } catch (caught) {
+      toast.error(caught instanceof Error ? caught.message : "删除失败");
+    } finally {
+      setDeletingPath(null);
+    }
+  }
 
   useEffect(() => {
     void load(rootPath);
@@ -113,7 +146,7 @@ export function AttachmentPanel({
       id="opshelper-attachment-panel"
       ref={panelRef}
       tabIndex={-1}
-      aria-label="添加附件"
+      aria-label="添加或下载文件"
       role={overlay ? "dialog" : undefined}
       aria-modal={overlay ? true : undefined}
     >
@@ -121,7 +154,7 @@ export function AttachmentPanel({
         <button onClick={() => void load(parentPath(path))} disabled={path === rootPath} title="上一级">
           <span className="opshelper-attachment-back"><IconChevron open={false} /></span>
         </button>
-        <div className="opshelper-files-title">添加附件</div>
+        <div className="opshelper-files-title">添加或下载文件</div>
         <button onClick={onClose} title="关闭"><IconClose /></button>
       </div>
       <div className="opshelper-attachment-path">{path.replace(/^\/workspace\/?/, "工作目录/").replace(/\/$/, "")}</div>
@@ -145,22 +178,51 @@ export function AttachmentPanel({
         {loading ? <div className="opshelper-attachment-empty">正在加载…</div> : null}
         {error ? <div className="opshelper-attachment-error">{error}</div> : null}
         {!loading && !error && files.length === 0 ? <div className="opshelper-attachment-empty">当前目录没有文件</div> : null}
-        {files.map((file) => file.type === "directory" ? (
-          <button className="opshelper-attachment-row" key={file.path} onClick={() => void load(file.path)}>
-            <IconFolder />
-            <span>{file.name}</span>
-            <IconChevron open={false} />
-          </button>
-        ) : (
+        {files.map((file) => (
           <div className="opshelper-attachment-row" key={file.path}>
-            <IconPaperclip />
-            <span>{file.name}</span>
+            {file.type === "directory" ? (
+              <button
+                type="button"
+                className="opshelper-attachment-open"
+                onClick={() => void load(file.path)}
+                title={`打开文件夹 ${file.name}`}
+              >
+                <IconFolder />
+                <span>{file.name}</span>
+                <IconChevron open={false} />
+              </button>
+            ) : (
+              <>
+                <IconPaperclip />
+                <span>{file.name}</span>
+              </>
+            )}
+            <a
+              className="opshelper-attachment-download"
+              href={`/v1/users/me/files/download?path=${encodeURIComponent(file.path)}`}
+              aria-label={`下载${file.type === "directory" ? "文件夹" : "文件"} ${file.name}`}
+              title={`下载${file.type === "directory" ? "文件夹" : "文件"} ${file.name}`}
+            >
+              <IconDownload />
+            </a>
             <button
+              type="button"
+              className="opshelper-attachment-delete"
+              aria-label={`删除${file.type === "directory" ? "文件夹" : "文件"} ${file.name}`}
+              title={`删除${file.type === "directory" ? "文件夹" : "文件"} ${file.name}`}
+              disabled={deletingPath === file.path}
+              onClick={() => void deleteFile(file)}
+            >
+              <IconTrash />
+            </button>
+            <button
+              type="button"
               className="opshelper-attachment-add"
               onClick={() => onAttach({
                 rel: file.path.replace(/^\/workspace\/?/, ""),
                 path: file.path,
                 filename: file.name,
+                type: file.type,
               })}
             >
               添加

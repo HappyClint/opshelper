@@ -6,8 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import {
   getFileIcon,
   IconArrowUp,
-  IconChevronDown,
-  IconChevronRight,
   IconCopy,
   IconDownload,
   IconEdit,
@@ -18,6 +16,7 @@ import {
   IconFolderPlus,
   IconFolderUp,
   IconRefresh,
+  IconScissors,
   IconTrash,
 } from "./file-icons";
 import { FileContextMenu, type FileContextMenuItem } from "./file-context-menu";
@@ -48,6 +47,15 @@ import {
   type FileInfo,
   type FileTreeRow,
 } from "./file-manager/utils";
+
+type FileView = "all" | "uploads" | "outputs";
+type FileClipboard = { mode: "copy" | "cut"; items: FileInfo[] };
+
+// chat-uploads 是对话与手动上传的落点，outputs 存放智能体生成的内容。
+const scopedViewRoots: Partial<Record<FileView, { path: string; label: string }>> = {
+  uploads: { path: `${rootPath}/chat-uploads`, label: "对话上传文件" },
+  outputs: { path: `${rootPath}/outputs`, label: "生成文件" },
+};
 
 function normalizedWorkspacePath(value?: string) {
   if (!value) return null;
@@ -85,6 +93,7 @@ export function FileManager({
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(readPersistedExpandedPaths);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [moveItems, setMoveItems] = useState<FileInfo[] | null>(null);
+  const [fileClipboard, setFileClipboard] = useState<FileClipboard | null>(null);
   const [draggedPaths, setDraggedPaths] = useState<string[]>([]);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<FileInfo | null>(null);
@@ -95,10 +104,15 @@ export function FileManager({
     | { position: { x: number; y: number }; target: "blank"; parentPath: string }
     | null
   >(null);
+  const [view, setView] = useState<FileView>("all");
+  const [searchText, setSearchText] = useState("");
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const requestedPath = useMemo(() => normalizedWorkspacePath(initialPath), [initialPath]);
 
-  const canGoUp = currentPath !== rootPath;
+  const scope = scopedViewRoots[view];
+  const scopeRoot = scope?.path ?? rootPath;
+  const canGoUp = currentPath !== scopeRoot;
   const apiBase = "/v1/users/me/files";
   const downloadBase = useMemo(() => `${apiBase}/download?path=`, [apiBase]);
 
@@ -124,22 +138,28 @@ export function FileManager({
     [listUrl],
   );
 
-  const visibleRows = useMemo(() => {
-    const rows: FileTreeRow[] = [];
+  const treeRows = useMemo<FileTreeRow[]>(
+    () => (entriesByPath[currentPath] ?? []).map((file) => ({ file, level: 0 })),
+    [entriesByPath, currentPath],
+  );
 
-    function append(path: string, level: number) {
-      const entries = entriesByPath[path] ?? [];
-      for (const file of entries) {
-        rows.push({ file, level });
-        if (file.type === "directory" && expandedPaths.has(file.path)) {
-          append(file.path, level + 1);
-        }
+  const searchKeyword = searchText.trim().toLowerCase();
+  const isFlatView = searchKeyword.length > 0;
+  const visibleRows = useMemo(() => {
+    if (!isFlatView) return treeRows;
+    const rows: FileTreeRow[] = [];
+    const seen = new Set<string>();
+    for (const list of Object.values(entriesByPath)) {
+      for (const file of list) {
+        if (seen.has(file.path)) continue;
+        seen.add(file.path);
+        if (scope && !file.path.startsWith(`${scope.path}/`)) continue;
+        if (searchKeyword && !file.name.toLowerCase().includes(searchKeyword)) continue;
+        rows.push({ file, level: 0 });
       }
     }
-
-    append(rootPath, 0);
-    return rows;
-  }, [entriesByPath, expandedPaths]);
+    return rows.sort((a, b) => a.file.name.localeCompare(b.file.name));
+  }, [isFlatView, treeRows, entriesByPath, searchKeyword, scope]);
 
   const visibleFiles = useMemo(() => visibleRows.map((row) => row.file), [visibleRows]);
   const selectedFiles = useMemo(
@@ -165,7 +185,7 @@ export function FileManager({
     );
   }, [entriesByPath]);
 
-  const rootLoaded = rootPath in entriesByPath;
+  const rootLoaded = currentPath in entriesByPath;
   const visibleSelectedCount = visibleFiles.filter((file) => selectedPaths.has(file.path)).length;
   const allVisibleSelected = visibleFiles.length > 0 && visibleSelectedCount === visibleFiles.length;
 
@@ -231,6 +251,35 @@ export function FileManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function switchView(next: FileView) {
+    setView(next);
+    setSearchText("");
+    setSelectedPaths(new Set());
+    const target = scopedViewRoots[next]?.path ?? rootPath;
+    run(async () => {
+      try {
+        await load(target);
+      } catch {
+        // 目录尚未创建时按空目录展示。
+        setEntriesByPath((previous) => ({ ...previous, [target]: [] }));
+        setCurrentPath(target);
+      }
+    });
+  }
+
+  function downloadItems(items: FileInfo[]) {
+    items.forEach((file, index) => {
+      window.setTimeout(() => {
+        const anchor = document.createElement("a");
+        anchor.href = `${downloadBase}${encodeURIComponent(file.path)}`;
+        anchor.download = file.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }, index * 300);
+    });
+  }
+
   useEffect(() => {
     if (!focusedPath) return;
     const frame = requestAnimationFrame(() => {
@@ -275,7 +324,7 @@ export function FileManager({
   }
 
   async function refreshTree(...affectedPaths: string[]) {
-    const pathsToLoad = new Set<string>([rootPath]);
+    const pathsToLoad = new Set<string>([rootPath, scopeRoot]);
     for (const p of affectedPaths) pathsToLoad.add(p);
     for (const p of expandedPaths) pathsToLoad.add(p);
 
@@ -300,25 +349,10 @@ export function FileManager({
 
   function toggleDirectory(file: FileInfo) {
     if (file.type !== "directory") return;
-
-    run(async () => {
-      if (expandedPaths.has(file.path)) {
-        setExpandedPaths((previous) => {
-          const next = new Set(previous);
-          next.delete(file.path);
-          return next;
-        });
-        setCurrentPath(file.path);
-        return;
-      }
-
-      if (!(file.path in entriesByPath)) {
-        await load(file.path);
-      } else {
-        setCurrentPath(file.path);
-      }
-      setExpandedPaths((previous) => new Set(previous).add(file.path));
-    });
+    setSearchText("");
+    setSelectedPaths(new Set());
+    setFocusedPath(null);
+    run(() => load(file.path));
   }
 
   function toggleSelected(path: string) {
@@ -357,6 +391,47 @@ export function FileManager({
     setMoveItems(null);
     toast.success(items.length === 1 ? "已移动" : `已移动 ${items.length} 项`);
     await refreshTree(targetDir, ...sourceDirs);
+  }
+
+  function canPasteTo(targetDir: string) {
+    if (!fileClipboard || fileClipboard.items.length === 0) return false;
+    return !fileClipboard.items.some((item) =>
+      item.type === "directory" && isInsidePath(targetDir, item.path),
+    );
+  }
+
+  function copyOrCutItems(items: FileInfo[], mode: FileClipboard["mode"]) {
+    if (items.length === 0) return;
+    const topLevelItems = items.filter((item) => !items.some((candidate) =>
+      candidate.path !== item.path &&
+      candidate.type === "directory" &&
+      isInsidePath(item.path, candidate.path),
+    ));
+    setFileClipboard({ mode, items: topLevelItems });
+    toast.success(mode === "copy" ? `已复制 ${topLevelItems.length} 项` : `已剪切 ${topLevelItems.length} 项`);
+  }
+
+  async function pasteItems(targetDir: string) {
+    if (!fileClipboard) return;
+    if (!canPasteTo(targetDir)) throw new Error("不能粘贴到所选文件夹自身或其子目录");
+    const { items, mode } = fileClipboard;
+    if (mode === "cut") {
+      await moveSelectedItems(items, targetDir);
+      setFileClipboard(null);
+      return;
+    }
+
+    for (const item of items) {
+      await parseJson<{ success: boolean }>(
+        await fetch("/v1/users/me/files/copy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourcePath: item.path, targetDir }),
+        }),
+      );
+    }
+    toast.success(items.length === 1 ? "已复制" : `已复制 ${items.length} 项`);
+    await refreshTree(targetDir);
   }
 
   async function startRename(file: FileInfo) {
@@ -534,6 +609,14 @@ export function FileManager({
     if (contextMenu.target === "blank") {
       const parentDir = contextMenu.parentPath;
       return [
+        ...(fileClipboard ? [
+          {
+            label: "粘贴到此处",
+            disabled: !canPasteTo(parentDir),
+            onSelect: () => run(() => pasteItems(parentDir)),
+          },
+          { divider: true as const },
+        ] : []),
         { label: "新建文件", icon: <IconFilePlus />, onSelect: () => handleCreateFile(parentDir) },
         { label: "新建文件夹", icon: <IconFolderPlus />, onSelect: () => handleCreateFolder(parentDir) },
         { divider: true },
@@ -549,14 +632,7 @@ export function FileManager({
         {
           label: "打开",
           icon: <IconFolder />,
-          onSelect: () => {
-            setFocusedPath(file.path);
-            if (!expandedPaths.has(file.path)) {
-              toggleDirectory(file);
-            } else {
-              setCurrentPath(file.path);
-            }
-          },
+          onSelect: () => toggleDirectory(file),
         },
         { divider: true },
         { label: "新建文件", icon: <IconFilePlus />, onSelect: () => handleCreateFile(file.path) },
@@ -575,6 +651,8 @@ export function FileManager({
     }
     items.push(
       { label: "重命名", icon: <IconEdit />, onSelect: () => void startRename(file) },
+      { label: "复制", icon: <IconCopy />, onSelect: () => copyOrCutItems(selectedPaths.has(file.path) ? selectedFiles : [file], "copy") },
+      { label: "剪切", icon: <IconScissors />, onSelect: () => copyOrCutItems(selectedPaths.has(file.path) ? selectedFiles : [file], "cut") },
       { label: "复制相对路径", icon: <IconCopy />, onSelect: () => void copyDisplayPath(file) },
       {
         label: "下载",
@@ -668,6 +746,24 @@ export function FileManager({
     ) {
       return;
     }
+    if (event.ctrlKey || event.metaKey) {
+      const key = event.key.toLowerCase();
+      const items = selectedFiles.length > 0
+        ? selectedFiles
+        : focusedPath
+          ? visibleFiles.filter((file) => file.path === focusedPath)
+          : [];
+      if (key === "c" || key === "x") {
+        event.preventDefault();
+        copyOrCutItems(items, key === "c" ? "copy" : "cut");
+        return;
+      }
+      if (key === "v" && fileClipboard) {
+        event.preventDefault();
+        run(() => pasteItems(currentPath));
+        return;
+      }
+    }
     const rows = visibleRows;
     if (rows.length === 0) return;
     const idx = focusedPath
@@ -696,22 +792,12 @@ export function FileManager({
     }
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      if (current.type === "directory" && !expandedPaths.has(current.path)) {
-        toggleDirectory(current);
-      } else {
-        const next = rows[Math.min(rows.length - 1, idx + 1)];
-        if (next) focusRow(next.file.path);
-      }
+      if (current.type === "directory") toggleDirectory(current);
       return;
     }
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      if (current.type === "directory" && expandedPaths.has(current.path)) {
-        toggleDirectory(current);
-      } else {
-        const parent = parentPath(current.path);
-        if (parent && parent !== rootPath) focusRow(parent);
-      }
+      if (canGoUp) run(() => load(parentPath(currentPath)));
       return;
     }
     if (event.key === "Enter") {
@@ -725,8 +811,7 @@ export function FileManager({
     }
     if (event.key === "Backspace") {
       event.preventDefault();
-      const parent = parentPath(current.path);
-      run(() => load(parent));
+      if (canGoUp) run(() => load(parentPath(currentPath)));
       return;
     }
     if (event.key === "Delete") {
@@ -818,7 +903,27 @@ export function FileManager({
   }
 
   return (
-    <article className={compact ? "panel file-manager file-manager-compact" : "panel file-manager"}>
+    <article className={compact ? "panel file-manager file-manager-compact" : "panel file-manager file-manager-with-sidebar"}>
+      {!compact ? (
+        <nav className="file-sidebar" aria-label="文件分类">
+          {([
+            ["all", "全部文件"],
+            ["uploads", "对话上传文件"],
+            ["outputs", "生成文件"],
+          ] as Array<[FileView, string]>).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={view === key ? "is-active" : ""}
+              aria-current={view === key ? "page" : undefined}
+              onClick={() => switchView(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      <div className="file-manager-main">
       <div className="panel-header file-manager-header">
         <div className="file-manager-pathbar">
           <button
@@ -837,7 +942,10 @@ export function FileManager({
               aria-label="目录路径"
               title={getDisplayPath(currentPath)}
             >
-              {pathSegments(currentPath).map((segment, idx, all) => {
+              {pathSegments(currentPath)
+                .filter((segment) => isInsidePath(segment.path, scopeRoot))
+                .map((segment) => (segment.path === scopeRoot && scope ? { ...segment, label: scope.label } : segment))
+                .map((segment, idx, all) => {
                 const isLast = idx === all.length - 1;
                 const dropOver = dragOverPath === segment.path;
                 return (
@@ -872,6 +980,17 @@ export function FileManager({
           </div>
         </div>
         <div className="inline-actions file-manager-toolbar">
+          {fileClipboard ? (
+            <button
+              className="button-secondary file-manager-action"
+              type="button"
+              disabled={isPending || !canPasteTo(currentPath)}
+              onClick={() => run(() => pasteItems(currentPath))}
+              title={`粘贴 ${fileClipboard.items.length} 项到当前目录`}
+            >
+              粘贴 {fileClipboard.items.length} 项
+            </button>
+          ) : null}
           <button
             className="button file-manager-action"
             type="button"
@@ -899,6 +1018,35 @@ export function FileManager({
               );
             }}
           />
+          <div className="file-new-menu">
+            <button
+              className="button-secondary file-manager-action"
+              type="button"
+              disabled={isPending}
+              aria-haspopup="menu"
+              aria-expanded={newMenuOpen}
+              onClick={() => setNewMenuOpen((value) => !value)}
+              onBlur={(event) => {
+                if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) {
+                  setNewMenuOpen(false);
+                }
+              }}
+              title="新建"
+            >
+              <span aria-hidden="true">+</span>
+              <span>新建</span>
+            </button>
+            {newMenuOpen ? (
+              <div className="file-new-menu-list" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setNewMenuOpen(false); void handleCreateFile(currentPath); }}>
+                  <IconFilePlus /> 新建文件
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setNewMenuOpen(false); void handleCreateFolder(currentPath); }}>
+                  <IconFolderPlus /> 新建文件夹
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             className="button-secondary file-manager-action"
             type="button"
@@ -963,6 +1111,19 @@ export function FileManager({
         </div>
       </div>
 
+      {!compact ? (
+        <div className="file-view-bar">
+          <input
+            className="field-input file-search-input"
+            type="search"
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder="搜索已加载的文件名"
+            aria-label="搜索文件"
+          />
+        </div>
+      ) : null}
+
       <div
         ref={treeRef}
         className={`file-tree${dragOverPath === currentPath ? " file-tree-drop-target" : ""}${selectedPaths.size > 0 ? " file-tree-selecting" : ""}`}
@@ -988,8 +1149,8 @@ export function FileManager({
         ) : visibleRows.length === 0 ? (
           <div className="file-empty">
             <span className="file-empty-icon" aria-hidden="true"><IconFolder /></span>
-            <strong>这个文件夹是空的</strong>
-            <span>把本机文件拖到这里，或点右上角「上传文件」。</span>
+            <strong>{isFlatView ? "没有匹配的文件" : "这个文件夹是空的"}</strong>
+            <span>{isFlatView ? "换个关键词试试。" : "把本机文件拖到这里，或点右上角「上传文件」。"}</span>
           </div>
         ) : (
           <>
@@ -999,24 +1160,36 @@ export function FileManager({
                   <label className="file-check">
                     <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="选择全部可见文件" />
                   </label>
-                  <span className="file-tree-head-label">名称</span>
-                  <span className="file-tree-head-count">{visibleRows.length} 项</span>
+                  {selectedFiles.length > 0 ? (
+                    <div className="file-head-bulk">
+                      <strong>已选 {selectedFiles.length} 项</strong>
+                      <button type="button" disabled={isPending} onClick={() => copyOrCutItems(selectedFiles, "copy")}>复制</button>
+                      <button type="button" disabled={isPending} onClick={() => copyOrCutItems(selectedFiles, "cut")}><IconScissors />剪切</button>
+                      <button type="button" disabled={isPending} onClick={() => setMoveItems(selectedFiles)}>移动</button>
+                      <button type="button" disabled={isPending} onClick={() => downloadItems(selectedFiles)}>下载</button>
+                      <button type="button" className="is-danger" disabled={isPending} onClick={() => void confirmBulkDelete(selectedFiles)}>删除</button>
+                      <button type="button" onClick={() => setSelectedPaths(new Set())}>取消选择</button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="file-tree-head-label">名称</span>
+                      <span className="file-tree-head-count">{visibleRows.length} 项</span>
+                    </>
+                  )}
                 </>
               ) : null}
             </div>
             {visibleRows.map(({ file, level }) => {
               const isDirectory = file.type === "directory";
-              const isExpanded = expandedPaths.has(file.path);
               const isSelected = focusedPath === file.path;
               const isChecked = selectedPaths.has(file.path);
 
               return (
                 <div
-                  className={`file-tree-row${isSelected ? " file-tree-row-selected" : ""}${isChecked ? " file-tree-row-checked" : ""}${dragOverPath === file.path ? " file-tree-row-drop-target" : ""}`}
+                  className={`file-tree-row${isSelected ? " file-tree-row-selected" : ""}${isChecked ? " file-tree-row-checked" : ""}${fileClipboard?.mode === "cut" && fileClipboard.items.some((item) => item.path === file.path) ? " file-tree-row-cut" : ""}${dragOverPath === file.path ? " file-tree-row-drop-target" : ""}`}
                   key={file.path}
                   data-file-path={file.path}
                   role="treeitem"
-                  aria-expanded={isDirectory ? isExpanded : undefined}
                   draggable
                   onDragStart={(event) => startFileDrag(event, file)}
                   onDragEnd={() => {
@@ -1051,18 +1224,15 @@ export function FileManager({
                       disabled={isPending}
                       onClick={(event) => {
                         const target = event.target as HTMLElement;
-                        if (isDirectory && target.closest(".file-toggle")) {
+                        void target;
+                        if (isDirectory) {
                           toggleDirectory(file);
-                          setFocusedPath(file.path);
                           return;
                         }
                         setFocusedPath(file.path);
                       }}
-                      title={isDirectory ? `双击展开 ${file.name}` : `双击打开 ${file.name}`}
+                      title={isDirectory ? `打开 ${file.name}` : `双击打开 ${file.name}`}
                     >
-                      <span className="file-toggle" aria-hidden="true">
-                        {isDirectory ? (isExpanded ? <IconChevronDown /> : <IconChevronRight />) : null}
-                      </span>
                       <span className={`file-icon${isDirectory ? " file-icon-folder" : ""}`} aria-hidden="true">
                         {isDirectory ? <IconFolder /> : getFileIcon(file.name)}
                       </span>
@@ -1071,6 +1241,7 @@ export function FileManager({
                     {!compact ? (
                       <span className="file-tree-meta">
                         <span className="file-tree-type">{isDirectory ? "文件夹" : formatSize(file.size)}</span>
+                        {isFlatView ? <span className="file-tree-date">{getDisplayPath(parentPath(file.path))}</span> : null}
                         <span className="file-tree-sep" aria-hidden="true">·</span>
                         <span className="file-tree-date">{formatDate(file.modified_at)}</span>
                       </span>
@@ -1128,6 +1299,23 @@ export function FileManager({
                     >
                       <IconCopy />
                     </button>
+                    <button
+                      type="button"
+                      className="file-row-quick-action"
+                      draggable={false}
+                      title="更多操作"
+                      aria-label={`${file.name} 的更多操作`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setFocusedPath(file.path);
+                        setContextMenu({ position: { x: rect.left, y: rect.bottom + 4 }, target: "row", file });
+                      }}
+                    >
+                      ⋯
+                    </button>
                   </div>
                 </div>
               );
@@ -1141,24 +1329,28 @@ export function FileManager({
           这里的文件会挂载到小信运维助手容器内。可以拖拽本机文件或文件夹到目标目录，也可以拖动列表内项目整理目录。
         </div>
 
-        {selectedFiles.length > 0 ? (
-          <div className="file-bulk-bar">
-            <span>已选择 {selectedFiles.length} 项</span>
-            <button className="button-secondary" type="button" disabled={isPending} onClick={() => setMoveItems(selectedFiles)}>移动</button>
-            <button
-              className="button-danger"
-              type="button"
-              disabled={isPending}
-              onClick={() => {
-                void confirmBulkDelete(selectedFiles);
-              }}
-            >
-              删除
-            </button>
-            <button className="button-secondary" type="button" onClick={() => setSelectedPaths(new Set())}>取消选择</button>
+        {!compact ? (
+          <div
+            className={`file-dropzone${dragOverPath === "__dropzone__" ? " is-over" : ""}`}
+            onDragOver={(event) => {
+              if (draggedPaths.length > 0) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              setDragOverPath("__dropzone__");
+            }}
+            onDragLeave={() => setDragOverPath((previous) => (previous === "__dropzone__" ? null : previous))}
+            onDrop={(event) => handleDrop(event, currentPath, { allowMove: false })}
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") fileInputRef.current?.click();
+            }}
+          >
+            拖拽文件到此处，快速上传到 {getDisplayPath(currentPath)}
           </div>
         ) : null}
-
+      </div>
       </div>
 
       {moveItems ? (

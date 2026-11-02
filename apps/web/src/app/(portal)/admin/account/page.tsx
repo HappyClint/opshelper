@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 
-import { AdminAccountSettings } from "@/components/admin-account-settings";
 import { AdminPage } from "@/components/admin-shell";
 import { IconSliders } from "@/components/chat/icons";
-import { getSession } from "@/lib/api";
+import { UserSettings } from "@/components/user-settings";
+import { getSession, getUserPortalSnapshot } from "@/lib/api";
 
 export default async function AdminAccountPage() {
   const session = await getSession();
@@ -12,17 +12,20 @@ export default async function AdminAccountPage() {
     redirect("/login");
   }
 
+  const snapshot = await getUserPortalSnapshot();
+
+  if (!snapshot) {
+    redirect("/login");
+  }
+
   return (
     <AdminPage
-      title="账户设置"
-      subtitle="管理员账号信息与密码"
+      title="个人设置"
+      subtitle="工作台容器、账户信息与密码"
       icon={<IconSliders />}
     >
       <div className="opshelper-settings-stack">
-        <AdminAccountSettings
-          username={session.user.username}
-          name={session.user.name}
-        />
+        <UserSettings snapshot={snapshot} />
       </div>
     </AdminPage>
   );

@@ -457,6 +457,13 @@
 /* 宽表格在自己的区域内横向滚动（包裹层由 markdown.ts 渲染），不把页面撑宽。 */
 .opshelper-table-scroll { margin: 12px 0; overflow-x: auto; overscroll-behavior-x: contain; }
 .opshelper-table-scroll > table { margin: 0; }
+.opshelper-diagram {
+  margin: 12px 0; overflow-x: auto; text-align: center;
+  --pele-bg: transparent; --pele-fg: var(--text); --pele-muted: var(--muted);
+  --pele-line: #6b7280; --pele-surface: #f6f7f9; --pele-surface-alt: #eef0f3;
+  --pele-border: var(--g-line-strong); --pele-accent: var(--accent);
+}
+.opshelper-markdown img.opshelper-workspace-image { display: block; max-width: 100%; height: auto; margin: 12px 0; background: #fff; border: 1px solid var(--g-line-strong); border-radius: 8px; }
 .opshelper-markdown table { width: 100%; min-width: 420px; border-collapse: collapse; font-size: 14px; }
 .opshelper-markdown th, .opshelper-markdown td { border: 1px solid var(--g-line-strong); padding: 9px 12px; text-align: left; vertical-align: top; }
 .opshelper-markdown th { background: #f6f7f9; font-weight: 600; }
@@ -785,6 +792,20 @@
 .opshelper-attach-btn:hover { color: var(--g-accent-dark); background: var(--g-field); }
 .opshelper-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .opshelper-attach-btn .opshelper-icon { width: 19px; height: 19px; }
+.opshelper-attach-menu-wrap { position: relative; flex: 0 0 auto; }
+.opshelper-attach-menu {
+  position: absolute; z-index: 20; left: 0; bottom: calc(100% + 8px);
+  min-width: 190px; padding: 5px; border: 1px solid var(--g-line-strong);
+  border-radius: 10px; background: var(--g-bg); box-shadow: var(--g-shadow-md);
+}
+.opshelper-attach-menu button {
+  width: 100%; min-height: 36px; display: flex; align-items: center; gap: 9px;
+  padding: 7px 9px; border: 0; border-radius: 7px; background: transparent;
+  color: var(--g-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.opshelper-attach-menu button:hover,
+.opshelper-attach-menu button:focus-visible { background: var(--g-field); outline: none; }
+.opshelper-attach-menu .opshelper-icon { width: 16px; height: 16px; color: var(--g-muted); }
 
 /* ---- @ mention menu ---- */
 .opshelper-mention-menu {
@@ -875,10 +896,30 @@
   padding: 7px 9px; border: 0; border-radius: 9px; background: transparent;
   color: var(--g-text); font: inherit; font-size: 13px; text-align: left;
 }
-button.opshelper-attachment-row { cursor: pointer; }
 .opshelper-attachment-row:hover { background: var(--g-field); }
 .opshelper-attachment-row > span:nth-child(2) { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opshelper-attachment-row > .opshelper-icon { color: var(--g-muted); }
+.opshelper-attachment-open {
+  min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px;
+  padding: 0; border: 0; background: transparent; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.opshelper-attachment-open > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opshelper-attachment-open > .opshelper-icon { color: var(--g-muted); }
+.opshelper-attachment-download {
+  flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px;
+  border-radius: 7px; color: var(--g-muted); text-decoration: none;
+}
+.opshelper-attachment-download:hover { background: var(--g-accent-soft); color: var(--g-accent-dark); }
+.opshelper-attachment-download .opshelper-icon { width: 16px; height: 16px; }
+.opshelper-attachment-delete {
+  flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px;
+  padding: 0; border: 0; border-radius: 7px; background: transparent;
+  color: var(--g-muted); cursor: pointer;
+}
+.opshelper-attachment-delete:hover:not(:disabled) { background: #fdecec; color: #b42318; }
+.opshelper-attachment-delete:disabled { opacity: 0.45; cursor: wait; }
+.opshelper-attachment-delete .opshelper-icon { width: 16px; height: 16px; }
 .opshelper-attachment-add {
   border: 1px solid var(--g-accent-line); border-radius: 7px; padding: 5px 9px;
   background: var(--g-accent-soft); color: var(--g-accent-dark); cursor: pointer;
@@ -1779,6 +1820,27 @@ button.opshelper-attachment-row { cursor: pointer; }
 }
 .opshelper-page-body .agent-assignment-option:hover { border-color: var(--g-line-strong); background: var(--g-field); }
 .opshelper-page-body .agent-assignment-option.checked { border-color: var(--g-accent-line); background: var(--g-accent-soft); }
+.opshelper-page-body .skill-repository-select-all {
+  display: inline-flex; align-items: center; gap: 7px; color: var(--g-muted); font-size: 13px;
+  white-space: nowrap; cursor: pointer;
+}
+.opshelper-page-body .skill-repository-select-all input { accent-color: var(--g-accent); }
+.opshelper-page-body .skill-repository-name {
+  justify-self: start; padding: 0; border: 0; background: transparent;
+  color: var(--g-text); font: inherit; font-size: 15px; font-weight: 650;
+  text-align: left; cursor: pointer;
+}
+.opshelper-page-body .skill-repository-name:hover { color: var(--g-accent-dark); }
+.opshelper-page-body .skill-repository-description {
+  display: -webkit-box; width: 100%; padding: 0; border: 0; background: transparent;
+  color: var(--g-muted); font: inherit; font-size: 14px; line-height: 1.55; text-align: left;
+  white-space: normal; cursor: pointer; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.opshelper-page-body .skill-repository-description:hover { color: var(--g-text); }
+.opshelper-page-body .skill-repository-description.expanded {
+  display: block; overflow: visible; -webkit-line-clamp: unset;
+}
 .opshelper-page-body .agent-assignment-foot { margin-top: 14px; padding-top: 14px; }
 .opshelper-page-body .agent-file-workspace { border-color: var(--g-line); border-radius: 12px; }
 .opshelper-page-body .agent-file-tree { background: #f6f7f9; border-right-color: var(--g-line); }
