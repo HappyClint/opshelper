@@ -56,8 +56,14 @@ const defaultImageRule =
 
 markdown.renderer.rules.image = (tokens, idx, options, env, self) => {
   const token = tokens[idx];
-  const src = token.attrGet("src") ?? "";
-  if (/^\/workspace\/[^?#]+$/.test(src) && !src.includes("..")) {
+  // markdown-it 已把非 ASCII 字符（如中文文件名）百分号编码，先还原再编码，避免双重编码。
+  let src = token.attrGet("src") ?? "";
+  try {
+    src = decodeURIComponent(src);
+  } catch {
+    return defaultImageRule(tokens, idx, options, env, self);
+  }
+  if (/^\/workspace\/[^?#]+$/.test(src) && !src.split("/").includes("..")) {
     token.attrSet("src", `${FILES_API}/download?path=${encodeURIComponent(src)}&inline=1`);
     token.attrSet("class", "opshelper-workspace-image");
     token.attrSet("loading", "lazy");

@@ -52,3 +52,15 @@ test("工作区图片改写为内联下载地址，且拒绝路径穿越", () =>
   const bad = renderAssistantMarkdown("![x](/workspace/../etc/passwd)");
   assert.doesNotMatch(bad, /files\/download/);
 });
+
+test("中文文件名的工作区图片只编码一次", () => {
+  const rendered = renderAssistantMarkdown("![图](/workspace/outputs/市场调研流程图.svg)");
+  const expected = encodeURIComponent("/workspace/outputs/市场调研流程图.svg");
+
+  assert.ok(rendered.includes(`download?path=${expected}&amp;inline=1`));
+  assert.doesNotMatch(rendered, /%25E5/);
+});
+
+test("编码形式的路径穿越同样被拒绝", () => {
+  assert.doesNotMatch(renderAssistantMarkdown("![x](/workspace/%2e%2e/etc/passwd)"), /files\/download/);
+});
